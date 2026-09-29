@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom</title>
+  <id>urn:example:atom</id>
+  <updated>2026-09-29T05:00:00Z</updated>
+  <entry>
+    <title>DuckDB adds a new storage format</title>
+    <id>urn:example:1</id>
+    <link rel="alternate" href="/blog/storage-format"/>
+    <updated>2026-09-29T05:00:00Z</updated>
+    <summary>Faster analytical queries on your laptop.</summary>
+  </entry>
+</feed>

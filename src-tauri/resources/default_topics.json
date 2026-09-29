@@ -1,0 +1,234 @@
+[
+  {
+    "name": "AI",
+    "priority": 2,
+    "keywords": [
+      "artificial intelligence",
+      "AI",
+      "generative AI",
+      "GenAI",
+      "AI model",
+      "foundation model"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "LLMs",
+    "priority": 3,
+    "keywords": [
+      "LLM",
+      "LLMs",
+      "large language model",
+      "GPT",
+      "Claude",
+      "Gemini",
+      "Llama",
+      "Mistral",
+      "Qwen",
+      "DeepSeek",
+      "transformer",
+      "fine-tuning",
+      "RAG",
+      "context window",
+      "inference",
+      "open-weight"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "AI Agents",
+    "priority": 3,
+    "keywords": [
+      "AI agent",
+      "AI agents",
+      "agentic",
+      "MCP",
+      "Model Context Protocol",
+      "tool calling",
+      "function calling",
+      "computer use",
+      "multi-agent",
+      "coding agent"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Machine Learning",
+    "priority": 2,
+    "keywords": [
+      "machine learning",
+      "ML",
+      "deep learning",
+      "neural network",
+      "PyTorch",
+      "JAX",
+      "training run",
+      "dataset",
+      "benchmark"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Python",
+    "priority": 2,
+    "keywords": [
+      "Python",
+      "PyPI",
+      "uv",
+      "Django",
+      "FastAPI",
+      "Flask",
+      "pandas",
+      "Polars",
+      "NumPy",
+      "Jupyter"
+    ],
+    "excludedKeywords": [
+      "Monty Python"
+    ]
+  },
+  {
+    "name": "Data Engineering",
+    "priority": 3,
+    "keywords": [
+      "data engineering",
+      "data pipeline",
+      "ETL",
+      "ELT",
+      "data warehouse",
+      "lakehouse",
+      "data lake",
+      "Spark",
+      "Kafka",
+      "Flink",
+      "Airflow",
+      "dbt",
+      "DuckDB",
+      "Iceberg",
+      "Delta Lake",
+      "Snowflake",
+      "Databricks",
+      "streaming",
+      "batch processing",
+      "data quality",
+      "orchestration"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Databases",
+    "priority": 2,
+    "keywords": [
+      "database",
+      "SQL",
+      "PostgreSQL",
+      "Postgres",
+      "MySQL",
+      "SQLite",
+      "vector database",
+      "query planner",
+      "indexing"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Backend",
+    "priority": 2,
+    "keywords": [
+      "backend",
+      "API",
+      "microservices",
+      "distributed systems",
+      "scalability",
+      "gRPC",
+      "REST API",
+      "Redis",
+      "Go",
+      "Rust"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Cloud / AWS",
+    "priority": 2,
+    "keywords": [
+      "AWS",
+      "Amazon Web Services",
+      "Azure",
+      "Google Cloud",
+      "GCP",
+      "Kubernetes",
+      "serverless",
+      "Lambda",
+      "EC2",
+      "S3",
+      "cloud infrastructure"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Cybersecurity",
+    "priority": 2,
+    "keywords": [
+      "security",
+      "vulnerability",
+      "CVE",
+      "exploit",
+      "ransomware",
+      "malware",
+      "phishing",
+      "data breach",
+      "zero-day",
+      "supply chain attack"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Apple",
+    "priority": 2,
+    "keywords": [
+      "Apple",
+      "iPhone",
+      "Mac",
+      "macOS",
+      "iOS",
+      "Apple Silicon",
+      "WWDC",
+      "Xcode",
+      "Swift",
+      "Vision Pro"
+    ],
+    "excludedKeywords": [
+      "apple cider"
+    ]
+  },
+  {
+    "name": "Robotics",
+    "priority": 1,
+    "keywords": [
+      "robot",
+      "robotics",
+      "humanoid",
+      "autonomous vehicle",
+      "drone",
+      "Boston Dynamics"
+    ],
+    "excludedKeywords": []
+  },
+  {
+    "name": "Startups",
+    "priority": 1,
+    "keywords": [
+      "startup",
+      "funding round",
+      "Series A",
+      "seed round",
+      "Y Combinator",
+      "YC",
+      "acquisition",
+      "IPO",
+      "valuation"
+    ],
+    "excludedKeywords": []
+  }
+]

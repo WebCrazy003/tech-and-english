@@ -1,0 +1,109 @@
+.shell {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 210px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 12px 14px;
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 16px;
+  padding: 0 10px 14px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+}
+.nav:hover {
+  background: var(--surface);
+}
+.active {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.navIcon {
+  width: 18px;
+  text-align: center;
+  color: var(--text-2);
+}
+.kbd {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.refresh {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.modeBox {
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+.modeLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+.segmented {
+  display: flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+}
+.segmented button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.segmented .on {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.segmented .onHibernate {
+  background: var(--hibernate);
+  color: #fff;
+}
+.segmented .on:hover,
+.segmented .onHibernate:hover {
+  filter: brightness(1.05);
+}
+.modeHint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 28px 36px 60px;
+}

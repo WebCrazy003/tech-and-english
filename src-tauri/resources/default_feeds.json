@@ -1,0 +1,233 @@
+[
+  {
+    "kind": "hn",
+    "name": "Hacker News",
+    "url": "hn:top,best,show",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "Ars Technica",
+    "url": "https://feeds.arstechnica.com/arstechnica/index",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "The Verge",
+    "url": "https://www.theverge.com/rss/index.xml",
+    "sourceWeight": 0.5,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "TechCrunch",
+    "url": "https://techcrunch.com/feed/",
+    "sourceWeight": 0.5,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "GitHub Blog",
+    "url": "https://github.blog/feed/",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "Cloudflare Blog",
+    "url": "https://blog.cloudflare.com/rss/",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "AWS News Blog",
+    "url": "https://aws.amazon.com/blogs/aws/feed/",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "Hugging Face Blog",
+    "url": "https://huggingface.co/blog/feed.xml",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Simon Willison",
+    "url": "https://simonwillison.net/atom/everything/",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Krebs on Security",
+    "url": "https://krebsonsecurity.com/feed/",
+    "sourceWeight": 0.6,
+    "group": "General tech"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #python",
+    "url": "https://dev.to/feed/tag/python",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #ai",
+    "url": "https://dev.to/feed/tag/ai",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #aws",
+    "url": "https://dev.to/feed/tag/aws",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #llm",
+    "url": "https://dev.to/feed/tag/llm",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #machinelearning",
+    "url": "https://dev.to/feed/tag/machinelearning",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "DEV Community: #dataengineering",
+    "url": "https://dev.to/feed/tag/dataengineering",
+    "sourceWeight": 0.3,
+    "group": "Developer community"
+  },
+  {
+    "kind": "rss",
+    "name": "OpenAI News",
+    "url": "https://openai.com/news/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Google DeepMind Blog",
+    "url": "https://deepmind.google/blog/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Google Research Blog",
+    "url": "https://research.google/blog/rss/",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "MIT Technology Review — AI",
+    "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Latent Space",
+    "url": "https://www.latent.space/feed",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Import AI",
+    "url": "https://importai.substack.com/feed",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Interconnects",
+    "url": "https://www.interconnects.ai/feed",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Ahead of AI (Sebastian Raschka)",
+    "url": "https://magazine.sebastianraschka.com/feed",
+    "sourceWeight": 0.6,
+    "group": "AI"
+  },
+  {
+    "kind": "rss",
+    "name": "Databricks Blog",
+    "url": "https://www.databricks.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Snowflake Blog",
+    "url": "https://www.snowflake.com/feed/",
+    "sourceWeight": 0.35,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Confluent Blog",
+    "url": "https://www.confluent.io/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "dbt Labs Blog",
+    "url": "https://www.getdbt.com/blog/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "DuckDB Blog",
+    "url": "https://duckdb.org/feed.xml",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Data Engineering Weekly",
+    "url": "https://www.dataengineeringweekly.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Seattle Data Guy",
+    "url": "https://seattledataguy.substack.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Netflix TechBlog",
+    "url": "https://netflixtechblog.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Data engineering"
+  },
+  {
+    "kind": "rss",
+    "name": "Towards Data Science",
+    "url": "https://towardsdatascience.com/feed",
+    "sourceWeight": 0.35,
+    "group": "Data engineering"
+  }
+]

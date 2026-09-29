@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Tech</title>
+    <link>https://example.com/</link>
+    <description>Example feed</description>
+    <item>
+      <title>New local AI model runs on Apple Silicon</title>
+      <link>https://example.com/posts/local-ai-model?utm_source=rss</link>
+      <description><![CDATA[<p>A small model &amp; a fast runtime.</p>]]></description>
+      <author>alice@example.com (Alice)</author>
+      <pubDate>Tue, 29 Sep 2026 06:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Kafka 5.0 brings faster streaming</title>
+      <link>https://example.com/posts/kafka-5</link>
+      <description>Streaming data pipelines get simpler.</description>
+      <pubDate>Mon, 28 Sep 2026 20:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
