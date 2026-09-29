@@ -6,21 +6,24 @@ These documents turn [../SPEC.md](../SPEC.md) (the **what**) into ordered, testa
 - Every task in a phase spec lists its **Depends on**, **Deliverables** and **Done when** items.
 - **A task is not done until its tests exist and pass.**
 
-| Phase | Document | Result |
-|---|---|---|
-| P1 | [P1-shell-and-news.md](P1-shell-and-news.md) | Menu-bar app + widget that fetches, ranks and picks one story a day. No AI. |
-| P2 | [P2-reader-wordbook-practice.md](P2-reader-wordbook-practice.md) | Clean reader, Word Book, 10-item FSRS quiz |
-| P3 | [P3-local-llm.md](P3-local-llm.md) | Local LLM: B1 summaries, Easy English, Explain / Ask AI |
-| P4 | [P4-voice-tutor.md](P4-voice-tutor.md) | Push-to-talk English tutor with corrections and session review |
-| P5 | [P5-packaging.md](P5-packaging.md) | Signed, self-contained `.dmg` with bundled sidecars |
+| Phase | Document | Result | Status |
+|---|---|---|---|
+| P1 | [P1-shell-and-news.md](P1-shell-and-news.md) | Menu-bar app + widget that fetches, ranks and picks one story a day. No AI. | ✅ v0.1.0 |
+| P2 | [P2-reader-and-ai-chat.md](P2-reader-and-ai-chat.md) | Read stories in the app, with a local AI chat panel (summarize, ask questions) | next |
+| P3 | [P3-learning-and-sources.md](P3-learning-and-sources.md) | "Today's lesson" (learning materials) + add a source from an example URL | |
+| P4 | [P4-words.md](P4-words.md) | Word popup (macOS dictionary + AI), Word Book, 10-item FSRS quiz | |
+| P5 | [P5-voice-tutor.md](P5-voice-tutor.md) | Push-to-talk English tutor with corrections and session review | |
+| P6 | [P6-packaging.md](P6-packaging.md) | Self-contained `.app` with bundled sidecars (ad-hoc signed) | |
 
 Each phase depends on the ones before it:
 
 ```
-P1 ──► P2 ──► P3 ──► P4 ──► P5
+P1 ──► P2 ──► P3 ──► P4 ──► P5 ──► P6
 ```
 
-P3's model downloader could start in parallel with P2, but that isn't planned.
+> **The order changed in v0.3 of the spec** (SPEC C13–C17), after P1, at the user's request: AI chat first, then learning materials, then words. P3 doesn't need the AI, so it could be built in parallel with P2 if wanted.
+
+**Migration numbers:** 0001 (P1) · 0002 reader + AI (P2) · 0003 learning (P3) · 0004 vocab (P4) · 0005 voice (P5).
 
 ---
 
@@ -79,24 +82,24 @@ At the start of each phase, re-check versions and **read the current docs** for 
 | `tracing`, `tracing-subscriber`, `tracing-appender` | 0.1 / 0.3 / 0.2 | P1 |
 | `wiremock` (dev) | 0.6 | P1 |
 | `tempfile` (dev) | 3.27 | P1 |
-| `fsrs` | 6.6 | P2 |
-| `sysinfo` | 0.39 | P3 |
-| `sha2` | 0.11 | P3 |
-| `cpal` | 0.18 | P4 |
-| `rubato` | 5.0 | P4 |
-| `hound` | 3.5 | P4 |
+| `fsrs` | 6.6 | P4 |
+| `sysinfo` | 0.39 | P2 |
+| `sha2` | 0.11 | P2 |
+| `cpal` | 0.18 | P5 |
+| `rubato` | 5.0 | P5 |
+| `hound` | 3.5 | P5 |
 
 ### Homebrew (development only)
 
 | Formula | Version | Phase |
 |---|---|---|
-| `llama.cpp` | 0.5.0 | P3 |
-| `whisper.cpp` | 1.9.4 | P4 |
+| `llama.cpp` | 0.5.0 | P2 |
+| `whisper.cpp` | 1.9.4 | P5 |
 
 > **Changes from SPEC §17:**
 > - `tauri-plugin-positioner` is **not** used. The widget is placed with `Monitor::work_area()`.
 > - `reqwest` uses **native-tls** (macOS Security framework), not rustls. With rustls, the TLS handshake to some Cloudflare-hosted feeds (e.g. Substack custom domains) hung until the connect timeout. Found in the P1 live feed check.
-> - `tauri-plugin-shell` is **not** used. Sidecars are started with `tokio::process::Command` using a resolved binary path (P3 §4.3). This keeps one code path for dev and bundled builds.
+> - `tauri-plugin-shell` is **not** used. Sidecars are started with `tokio::process::Command` using a resolved binary path (P2 §8.3). This keeps one code path for dev and bundled builds.
 
 ---
 

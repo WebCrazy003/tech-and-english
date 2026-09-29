@@ -1,9 +1,9 @@
 # Tech English — Product & Technical Specification
 
-- **Version:** 0.2 (implementation spec)
+- **Version:** 0.3 (implementation spec)
 - **Date:** 2026-09-29
-- **Status:** Draft, ready for Phase 1
-- **Dev specs:** [dev/README.md](dev/README.md) (per-phase implementation plans P1–P5)
+- **Status:** P1 done (v0.1.0). v0.3 adds learning materials, example sources, AI chat in the reader, dictionary meanings, and a new phase order.
+- **Dev specs:** [dev/README.md](dev/README.md) (per-phase implementation plans P1–P6)
 - **Based on:** the original product spec (v0.1), plus the review changes listed in §3
 
 Words used in this document:
@@ -11,7 +11,7 @@ Words used in this document:
 - **SHOULD** means strongly recommended.
 - **MAY** means optional.
 
-Each requirement belongs to a delivery phase (P1–P5, see §18).
+Each requirement belongs to a delivery phase (P1–P6, see §18).
 
 ---
 
@@ -69,9 +69,19 @@ Model sizing for 16 GB (see §11 and §12):
 | C7 | Detecting Mac sleep/wake with OS hooks | **Wall-clock tick scheduler** (every 60 s it checks what is overdue). Wake-up catch-up happens naturally. | Simpler and more robust than OS hooks. |
 | C8 | Voice Activity Detection (VAD) only | **Push-to-talk by default.** VAD auto-stop is an option. | B1 learners pause mid-sentence, and VAD cuts them off. |
 | C9 | Basic spaced repetition first, FSRS later | Use **FSRS from the start** (`fsrs` crate), mapping the 3 buttons to FSRS grades. | Same effort, better scheduling. |
-| C10 | One large MVP | **Phased delivery** (P1–P5), each phase usable on its own. | Reduces risk; each phase can be tested. |
+| C10 | One large MVP | **Phased delivery** (P1–P6), each phase usable on its own. | Reduces risk; each phase can be tested. |
 | C11 | Database stored in `data/app.db` in the repo | Data and models stored in `~/Library/Application Support/<bundle-id>/` | Standard macOS location; keeps GBs of models out of the repo. |
 | C12 | Daily pick timing not defined | Pick at **08:00 local** (configurable), or at the first opportunity after that time. | Deterministic and testable. |
+
+**Added in v0.3 (2026-09-29, after P1).** These come from the user's requests after using P1:
+
+| # | Request | Decision | Reason |
+|---|---|---|---|
+| C13 | Learning materials for data engineering | Topics get a **Learn** switch. A second daily pick, **"Today's lesson"**, chooses a tutorial or explainer (§7.11). | A keyword topic such as "learn data engineering" matched 0 of 363 stories. Learning needs a content-type signal, not just more keywords. |
+| C14 | Give example materials → fetch similar blogs | In Settings, paste an example article or blog URL. The app finds **that site's own feed** and adds it (§7.12). | The user chose this option. Suggesting other similar blogs is out of scope for now (§20). |
+| C15 | Read stories in the app, with an AI chat on the right | The Reader has an **AI chat panel** on the right (summarize, ask questions) (§8.4). **AI chat comes first** in the phase order. | The user chose "AI chat first". |
+| C16 | Select a word → meaning, pronunciation, Word Book | Meaning comes from the **macOS built-in dictionary** (offline, free). An AI explanation button is added because the AI already exists by then (§8.5). | Works without waiting for the AI or typing meanings by hand. |
+| C17 | Phase order | P2 Reader + AI chat · P3 Learning & sources · P4 Words (popup, Word Book, quiz) · P5 Voice tutor · P6 Packaging | Follows C15. The old P2 (Reader + Word Book) was split; the old P3 (LLM) moved into P2. |
 
 ---
 
@@ -139,9 +149,11 @@ Principles:
 │      412 points on Hacker News  │
 │ [Read] [Listen] [Discuss] [⋯]   │   (⋯ = Save / Not interested)
 ├─────────────────────────────────┤
-│ 📚 23 words due  [Practice]     │   (P2+)
+│ 📚 23 words due  [Practice]     │   (P4+)
 └─────────────────────────────────┘
 ```
+
+From P3, the card has a small **Story | Lesson** switch at the top. It shows today's news pick or today's lesson (§7.11). The switch is hidden when there is no lesson.
 
 Widget states:
 - **pick ready**
@@ -173,7 +185,7 @@ Buttons that belong to later phases are hidden until those phases ship.
 
 ---
 
-## 6. Operating modes & resource management (P1, extended P3/P4)
+## 6. Operating modes & resource management (P1, extended in P2 and P5)
 
 | Component | Standard | Hibernate |
 |---|---|---|
@@ -221,6 +233,7 @@ Each topic has these fields:
 - `enabled`
 - `notify` (bool)
 - `notify_threshold` (0–100, or empty to use the global value)
+- `learn` (bool, P3): "Also find learning materials for this topic" (§7.11)
 
 ### 7.2 Sources
 
@@ -412,13 +425,13 @@ If no article is eligible, the age limit is relaxed to 72 h. If still nothing is
 
 **"Why you may find it interesting":**
 - **P1:** built from a template, e.g. `Matches your topics: AI Agents, LLMs · 412 points on Hacker News · from a source you read often`.
-- **P3:** MAY be replaced by a 1–2 sentence LLM text, generated lazily the first time the pick is shown in Standard Mode.
+- **P2:** MAY be replaced by a 1–2 sentence LLM text, generated lazily the first time the pick is shown in Standard Mode.
 
 Card actions:
-- Read
-- Easy Summary (P3)
-- Listen (P3; TTS of the summary, or of the title and description in P2)
-- Discuss (P4)
+- Read (P1: opens the browser · P2: opens the in-app Reader)
+- Easy Summary (P2)
+- Listen (P4; TTS of the summary if one exists, else of the title and description)
+- Discuss (P5)
 - Save
 - Not interested
 
@@ -437,15 +450,102 @@ Every notification sent is written to `notifications_log`.
 
 ### 7.10 Retention
 
-Articles older than 60 days are deleted, unless they are saved, linked to vocabulary, or linked to a conversation.
+Articles older than 60 days are deleted, unless they are saved, were a story or lesson pick, have an AI chat, are linked to vocabulary, or are linked to a conversation.
 
 `body_text` is cleared after 14 days for articles that are not saved.
 
 This job runs once a day.
 
+### 7.11 Learning materials & "Today's lesson" (P3)
+
+**Goal:** each day, besides the news story, offer one article that teaches a concept or a technology: a tutorial, explainer, guide or deep dive.
+
+**Learn topics.** Any topic can have **Learn** switched on (§7.1). The lesson must match a topic with `learn = true` (relevance ≥ 0.3), using the topic's normal subject keywords. There is no separate "learn X" topic: the user's existing "Data Engineering" topic with Learn on replaces a keyword topic like "learn data engineering".
+
+**Learning sources.** Feeds get a `learning` flag ("This source mostly publishes learning material"). It is seeded `true` for the learning sources below and can be changed in Settings.
+
+**Learning score** (`learning_score`, 0–1, computed at ingest, no LLM):
+
+| Signal | Effect |
+|---|---|
+| Each distinct learning pattern in title/description: `how to`, `how … works`, `guide`, `tutorial`, `explained`, `explainer`, `introduction to`, `intro to`, `beginner`, `101`, `deep dive`, `what is`, `what are`, `understanding`, `step by step`, `from scratch`, `best practices`, `patterns`, `primer`, `cheat sheet`, `hands-on`, `walkthrough`, `fundamentals`, `lessons learned`, `vs` (comparisons) | +0.25 each (at most +0.75) |
+| Feed has `learning = true` | +0.35 |
+| Body word count ≥ 1,200, once extracted (P2 Reader) | +0.10 |
+| News patterns: `announces`, `launches`, `raises`, `acquires`, `funding`, `now available`, `introducing`, `release notes`, `weekly roundup`, `this week in` | −0.30 |
+| Training-course spam: `course in <place>`, `training in`, `institute`, `certification training`, `bootcamp in`, `job guarantee` | score = 0 (never a lesson) |
+
+The score is clamped to 0–1. The patterns are kept in one list in code and unit-tested with real titles from the live feeds.
+
+**Lesson eligibility:**
+- `learning_score ≥ 0.5`
+- matches a topic with `learn = true` (relevance ≥ 0.3)
+- age ≤ 60 days (setting `lessonMaxAgeDays`), because good tutorials stay useful
+- not hidden, not paywalled, English
+- not today's story, and not a story or lesson pick in the last 60 days
+
+**Lesson score:**
+
+`lesson_score = 100 × (0.35 × learn-topic relevance + 0.30 × learning_score + 0.15 × source_preference + 0.10 × popularity + 0.10 × user_history)`
+
+Freshness is left out on purpose. Ties go to the newest article.
+
+**Ingest age for learning feeds.** Feeds with `learning = true` keep items up to `lessonMaxAgeDays` old (default 60), instead of the normal 7-day ingest limit (§7.3). This gives the lesson pool enough history.
+
+**Timing and notification.** The lesson is chosen right after the daily story, at the same pick time. The one daily notification mentions both: `Today's story and lesson are ready.` It is still one notification per day. If no article is eligible, there is no lesson that day; the widget hides the Lesson switch, and Today shows "No lesson today".
+
+**UI:**
+- The widget has a Story | Lesson switch (§5.2).
+- The Today page shows two cards, **Today's story** and **Today's lesson**. The lesson card says "Why this lesson" (e.g. `Tutorial · Data Engineering · from a learning source`).
+- Explore has a **Learning only** filter.
+- The topic editor has the **Learn** switch.
+- Feeds have a **Learning source** switch.
+
+**Default learning sources** (verified 2026-09-29, `learning = true`):
+
+| Name | URL |
+|---|---|
+| Practical Data Modeling (Joe Reis) | https://practicaldatamodeling.substack.com/feed |
+| Data Engineering Central | https://dataengineeringcentral.substack.com/feed |
+| Dagster Blog | https://dagster.io/blog/rss.xml |
+| MotherDuck Blog | https://motherduck.com/rss.xml |
+| Estuary Blog | https://estuary.dev/blog/rss.xml |
+| Confessions of a Data Guy | https://www.confessionsofadataguy.com/feed/ |
+| Real Python | https://realpython.com/atom.xml |
+| freeCodeCamp News | https://www.freecodecamp.org/news/rss/ |
+| Chip Huyen | https://huyenchip.com/feed.xml |
+
+These existing sources also get `learning = true`: Seattle Data Guy, dbt Labs Blog, DuckDB Blog, Ahead of AI, Towards Data Science.
+
+Checked and not added: Start Data Engineering (no RSS feed at all), Airbyte (404), DataCamp (403), dataengineer.io (timed out). On existing installs, the P3 migration adds the new sources and flags, but only if the user doesn't already have those URLs.
+
+### 7.12 Add a source from an example (P3)
+
+In **Settings › News sources**, the user can paste the URL of an article or blog they like. The app then adds **that site's feed**.
+
+1. Fetch the page: 15 s timeout, max 3 MB, HTML only.
+2. **Autodiscovery.** Look for `<link rel="alternate">` tags with type `application/rss+xml`, `application/atom+xml` or `application/feed+json`. Relative `href`s are resolved against the page URL.
+3. **Known patterns**, if step 2 finds nothing:
+   - Substack: `/feed`
+   - Medium: `medium.com/feed/@user` or `/feed/<publication>`
+   - WordPress: `/feed/`
+   - Ghost: `/rss/`
+   - Hugo: `/index.xml`
+   - Jekyll: `/feed.xml`
+   - generic: `/rss.xml`, `/atom.xml`
+
+   Each pattern is tried on the site root and on the article's parent path (e.g. `/blog/feed`).
+4. Validate every candidate with `test_feed` (§7.2). Show the valid ones with their title, item count and newest date. The user picks one. They can also switch on **Learning source**, and change the name.
+5. **Also save this article** (checked by default): the example article itself is stored and marked saved, so it can be read right away.
+
+Messages:
+- The feed is already in the list → "This source is already in your list."
+- No feed is found → "We couldn't find a feed for this site. Some sites don't have one." (e.g. Start Data Engineering)
+
+Suggesting *other* similar blogs is not part of v1 (see §20).
+
 ---
 
-## 8. Reader (P2, AI modes in P3)
+## 8. Reader & AI chat (P2)
 
 ### 8.1 Body extraction
 
@@ -479,25 +579,58 @@ For the daily pick, the Rust core emits `article://needs-body`. The widget web v
 | Mode | Phase | Content |
 |---|---|---|
 | Original | P2 | Extracted text in a clean reading view, plus an "Open in browser" button. If extraction failed: title, description and the link. |
-| B1 Summary | P3 | LLM task `summarize_b1` (§11.4). Keeps the key technical concepts; ≤ 250 words. |
-| Easy English | P3 | LLM task `simplify_easy`. Short sentences, one idea per sentence, common words, technical terms explained inline. |
+| B1 Summary | P2 | LLM task `summarize_b1` (§11.4). Keeps the key technical concepts; ≤ 250 words. |
+| Easy English | P2 | LLM task `simplify_easy`. Short sentences, one idea per sentence, common words, technical terms explained inline. |
 
 LLM outputs are cached in `article_derivatives`, keyed by article, kind and model id.
 
-### 8.4 Selection popup
+### 8.4 AI chat panel (P2)
 
-Selecting 1–8 words anywhere in the Reader shows a popup:
+The Reader has two columns: the article on the left, and an **AI panel on the right** (about 360 px wide, collapsible, remembered).
 
-- The selected text, plus 🔊 (TTS at the current rate).
-- **P2:** meaning (optional, typed by the user), then **Add to Word Book**. The sentence around the selection is always saved as context.
-- **P3:** **Explain** (LLM task `define_term`, using the sentence as context). It shows a simple meaning, B1 meaning, part of speech, 2–3 examples (one related to the article) and collocations. **Add to Word Book** saves all of these.
-- **P3:** **Ask AI** opens a small chat panel scoped to the article.
+```
+┌──────────────────────────────────────┬──────────────────────────┐
+│ Title · source · 6 min · Medium      │  AI                    ⌃ │
+│ [Original] [B1 Summary] [Easy]       │ [Summarize] [Key words]  │
+│                                      │ [Explain simply]         │
+│ Article text…                        │                          │
+│                                      │ You: What is a lakehouse?│
+│                                      │ AI: A lakehouse is…      │
+│                                      │                          │
+│                                      │ [Ask about this story… ] │
+└──────────────────────────────────────┴──────────────────────────┘
+```
+
+- **Quick actions:**
+  - **Summarize**: the cached B1 summary, posted as an AI message.
+  - **Key words**: 5 important technical words, each with a simple meaning.
+  - **Explain simply**: explains the article's main idea in easy English.
+- **Free questions** about the story. Answers stream in, and follow the English level setting (Level 2 B1 by default; ≤ 120 words unless the user asks for more).
+- **Context.** The model sees the article's title and B1 summary, plus the most relevant body paragraphs (§11.4 truncation). It is told to answer from the article, and to say so when the article doesn't contain the answer.
+- **Selected text.** When the user selects text in the article, an **Ask AI about this** chip appears. It puts the quote into the chat input.
+- **History is saved per article** (`article_chats`), so reopening a story shows the earlier conversation. There is a **Clear chat** action. At most the last 8 messages are sent to the model.
+- **States:**
+  - no model yet → a setup card with the size and license, plus [Download]
+  - model loading → progress
+  - Hibernate → "AI is off in Hibernate mode" + [Switch to Standard]
+  - error → message + [Retry]
+- The panel does not start the model until the user uses it.
+
+### 8.5 Selection popup (P4)
+
+Selecting 1–8 words in the Reader, or in an AI answer, shows a popup:
+
+- **Dictionary meaning** from the **macOS built-in dictionary** (Dictionary Services `DCSCopyTextDefinition`, offline). It shows the headword, the pronunciation as written in the dictionary (IPA), the part of speech, and the first 1–2 senses, trimmed. If the dictionary has no entry, it says "Not in the dictionary".
+- 🔊 **Listen**: TTS of the word at a slow rate (§12 voices; default rate 0.7).
+- **Explain simply (AI)**: LLM task `define_term`, using the sentence as context. It gives a simple meaning, a B1 meaning, 2–3 examples (one about the article), collocations, and syllables with the stress marked as a hint.
+- **Add to Word Book**: saves the dictionary meaning (or the AI meaning, if it was requested), the pronunciation, and the sentence as context.
+- **Ask AI**: sends "What does '…' mean here?" to the chat panel.
 
 In the Reader, words that are already in the Word Book SHOULD be underlined lightly.
 
 ---
 
-## 9. Word Book (P2)
+## 9. Word Book (P4)
 
 ### 9.1 Item kinds
 
@@ -515,17 +648,17 @@ See `vocab_items` in §13. Saved context (the sentence, plus the article or conv
 
 - Items are deduplicated by `(kind, text_key)`, where `text_key` = lowercase, trimmed, with collapsed whitespace. Adding an existing item adds a new context. If the item's status is `known`, it goes back to `learning`.
 - Items with no meaning are allowed. They appear as "Meaning pending" and are **skipped by quizzes** until they have a meaning.
-- **P3** auto-fills pending meanings in the background, in Standard Mode, when the LLM is loaded anyway.
+- **The AI** (from P2 on) auto-fills pending meanings in the background, in Standard Mode, when the LLM is loaded anyway.
 
 ### 9.4 Word Book page
 
 - A list with a search box and filters (kind, status, due, source article).
 - A detail view: meaning, examples, 🔊, contexts with links to the source, review history, and Edit / Delete.
-- Export to CSV (P2); Anki export is for later.
+- Export to CSV (P4); Anki export is for later.
 
 ---
 
-## 10. Practice & spaced repetition (P2)
+## 10. Practice & spaced repetition (P4)
 
 ### 10.1 Scheduling: FSRS
 
@@ -577,7 +710,7 @@ The widget shows the count of items due today.
 
 ---
 
-## 11. AI engine (P3)
+## 11. AI engine (P2)
 
 ### 11.1 LlmProvider
 
@@ -615,7 +748,7 @@ Unloaded → Starting → Ready ⇄ Busy → (idle timeout / Hibernate / Quit) �
 
 **Where the binaries come from:**
 - **Development:** Homebrew (`brew install llama.cpp whisper-cpp`), or a path set in Settings.
-- **Distribution (P5):** bundled as Tauri `externalBin` sidecars.
+- **Distribution (P6):** bundled as Tauri `externalBin` sidecars.
 
 ### 11.3 Models
 
@@ -625,7 +758,7 @@ Unloaded → Starting → Ready ⇄ Busy → (idle timeout / Hibernate / Quit) �
   - can resume interrupted downloads;
   - checks the sha256;
   - stores models in `~/Library/Application Support/<bundle-id>/models/`.
-- **Choosing the default chat model (a P3 spike).** Benchmark 2–3 current 4B-class and 7–8B-class instruct GGUFs on this M1. Default = the best quality model that meets all of these:
+- **Choosing the default chat model (a P2 spike).** Benchmark 2–3 current 4B-class and 7–8B-class instruct GGUFs on this M1. Default = the best quality model that meets all of these:
   - ≥ 20 tokens/s generation
   - ≤ 1.5 s to the first token on a follow-up conversation turn
   - valid JSON on ≥ 98 % of the tutor-turn schema test prompts
@@ -640,6 +773,7 @@ Each task has a versioned template in `src-tauri/src/ai/prompts/`. Tasks with st
 | `why_interesting` (News) | title, description, matched topics | 1–2 sentences |
 | `summarize_b1` (Reader) | body (truncated to fit) | ≤ 250-word B1 summary |
 | `simplify_easy` (English Tutor) | body or summary | Easy English text |
+| `article_chat` (Reader chat, P2) | article title + B1 summary + relevant paragraphs, the last ≤ 8 chat messages, the question or quick action (`summarize` / `key_words` / `explain_simply`) | streamed plain text; `key_words` = 5 lines `word — simple meaning` |
 | `define_term` (Vocabulary) | term, context sentence, article title | JSON: `{meaning_simple, meaning_b1, part_of_speech, ipa?, examples[3], collocations[]}` |
 | `tutor_turn` (Voice + Correction) | §12.4 | JSON (§12.4) |
 | `session_review` (Learning) | observations + transcript | JSON: suggestions with a `preselected` flag |
@@ -648,7 +782,7 @@ Long bodies are trimmed to the context budget, in this order of preference: firs
 
 ---
 
-## 12. Voice tutor (P4)
+## 12. Voice tutor (P5)
 
 ### 12.1 Pipeline
 
@@ -883,7 +1017,7 @@ CREATE TABLE notifications_log (
   sent_at TEXT NOT NULL
 );
 
--- P2 ─────────────────────────────────────────────
+-- P4 (Words) ─────────────────────────────────
 CREATE TABLE vocab_items (
   id INTEGER PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('word','phrase','sentence','term','pronunciation','correction')),
@@ -931,7 +1065,7 @@ CREATE TABLE vocab_reviews (
   stability_after REAL, difficulty_after REAL, due_after TEXT
 );
 
--- P3 ─────────────────────────────────────────────
+-- P2 (Reader & AI) ───────────────────────────
 CREATE TABLE article_derivatives (
   article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('summary_b1','easy_english','why_interesting')),
@@ -942,7 +1076,25 @@ CREATE TABLE article_derivatives (
   PRIMARY KEY (article_id, kind)
 );
 
--- P4 ─────────────────────────────────────────────
+CREATE TABLE article_chats (
+  id INTEGER PRIMARY KEY,
+  article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  content TEXT NOT NULL,
+  model_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_article_chats_article ON article_chats(article_id, id);
+
+-- P3 (Learning & sources) ─────────────────────────
+ALTER TABLE topics ADD COLUMN learn INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE feeds ADD COLUMN learning INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE articles ADD COLUMN learning_score REAL;
+ALTER TABLE articles ADD COLUMN lesson_score REAL;
+-- daily_picks is rebuilt with a kind column and PRIMARY KEY (date, kind):
+--   kind TEXT NOT NULL DEFAULT 'story' CHECK (kind IN ('story','lesson'))
+
+-- P5 (Voice) ─────────────────────────────────
 CREATE TABLE conversations (
   id INTEGER PRIMARY KEY,
   article_id INTEGER REFERENCES articles(id) ON DELETE SET NULL,
@@ -988,9 +1140,10 @@ Commands return `Result<T, AppError>`. `AppError` serializes to `{ code, message
 | Phase | Commands |
 |---|---|
 | P1 | `get_mode`, `set_mode`, `get_settings`, `update_settings`, `list_topics`, `upsert_topic`, `delete_topic`, `list_feeds`, `upsert_feed`, `delete_feed`, `test_feed`, `refresh_now`, `get_today_pick`, `list_articles(filter, cursor)`, `get_article`, `record_interaction`, `set_widget_style`, `complete_onboarding` |
-| P2 | `fetch_article_html`, `save_article_body`, `add_vocab_item`, `update_vocab_item`, `delete_vocab_item`, `list_vocab(filter)`, `get_vocab_item`, `due_count`, `start_quiz`, `grade_quiz_item`, `finish_quiz`, `export_vocab_csv` |
-| P3 | `ai_status`, `list_models`, `download_model`, `cancel_download`, `set_active_model`, `get_derivative(article_id, kind)`, `define_term`, `ask_about_article` |
-| P4 | `start_voice_session`, `start_recording`, `stop_recording`, `send_text_turn` (typed fallback), `end_voice_session`, `get_session_review`, `apply_session_review`, `list_conversations` |
+| P2 | `fetch_article_html`, `save_article_body`, `ai_status`, `list_models`, `download_model`, `cancel_download`, `delete_model`, `set_active_model`, `confirm_ai_start`, `unload_ai`, `get_derivative(article_id, kind)`, `list_article_chat`, `send_article_chat(article_id, text | action, channel)`, `clear_article_chat`, `cancel_job` |
+| P3 | `get_today_lesson`, `discover_feeds(url)` → candidates, `add_feed_from_example(url, feed_url, name, learning, save_article)`; `upsert_topic`/`upsert_feed` gain `learn`/`learning`; `list_articles` filter gains `learningOnly` |
+| P4 | `dictionary_lookup(term)`, `define_term`, `add_vocab_item`, `update_vocab_item`, `delete_vocab_item`, `list_vocab(filter)`, `get_vocab_item`, `list_vocab_keys`, `due_count`, `start_quiz`, `grade_quiz_item`, `finish_quiz`, `export_vocab_csv` |
+| P5 | `start_voice_session`, `start_recording`, `stop_recording`, `send_text_turn` (typed fallback), `end_voice_session`, `get_session_review`, `apply_session_review`, `list_conversations` |
 
 | Event | Payload |
 |---|---|
@@ -1088,14 +1241,14 @@ tech-and-english/
 - Zustand
 - React Router
 - CSS Modules with CSS variables (theme)
-- `@mozilla/readability` (P2)
+- `@mozilla/readability`, `dompurify` (P2)
 - Vitest
 
 **Rust crates:**
 - `tauri` 2, with plugins: `notification`, `autostart`, `single-instance`, `positioner`, `opener`. There is no `shell` plugin: sidecars are started with `tokio::process` (see docs/dev/README.md).
 - `tokio`, `reqwest` (rustls), `feed-rs`, `rusqlite` (bundled), `serde`/`serde_json`, `chrono`, `url`, `tracing`, `thiserror`
-- `fsrs` (P2)
-- `cpal`, `rubato`, `hound` (P4)
+- `fsrs` (P4); `core-foundation` for macOS Dictionary Services (P4)
+- `cpal`, `rubato`, `hound` (P5)
 
 ---
 
@@ -1127,34 +1280,56 @@ tech-and-english/
 13. `cargo test` covers: URL normalization, title key, dedupe, topic matching (including exclusions), ranking math, pick eligibility and fallback, notification rules, and retention. Everything passes.
 14. The idle RSS and CPU budgets (§16) are measured and recorded in `docs/perf.md`.
 
-### P2 — Reader, Word Book, Practice
+> **Phase order changed in v0.3** (C17). Old → new: old P2 was split into new P2 (Reader) and new P4 (Words); old P3 (LLM) → P2; old P4 (Voice) → P5; old P5 (Packaging) → P6. P3 (Learning & sources) is new.
 
-**Build:** §8.1, §8.2, the Original reader mode, the §8.4 P2 popup, §9, §10, TTS for 🔊 and for Listen (title + description), and the P2 tables.
+### P2 — Reader & AI chat
 
-**Acceptance:**
-1. Opening an article shows the clean extracted text. Failed and paywalled articles show a fallback with an "Open in browser" button.
-2. The difficulty and reading time appear on the pick card and in Explore.
-3. Selecting text → Add to Word Book saves the item with its sentence context. Re-adding it adds a context instead of a duplicate.
-4. A 10-item quiz follows the §10.2 selection order. The buttons update FSRS fields and counters. The result score matches the formula and is stored.
-5. The due count in the widget updates after a quiz.
-6. Items without a meaning are excluded from quizzes. CSV export works.
-7. Unit tests cover quiz selection buckets, FSRS grade mapping, status transitions and difficulty thresholds.
-
-### P3 — Local LLM
-
-**Build:** §11 (provider, sidecar manager, model catalog/downloader, the model benchmark spike), the B1 Summary and Easy English modes, Explain / Ask AI in the popup, the optional LLM "why" text, auto-fill of pending meanings, and the P3 tables.
+**Build:**
+- §8.1 extraction, §8.2 difficulty and reading time, §8.3 reader modes, §8.4 AI chat panel
+- §11 AI engine: provider, sidecar manager, model catalog and downloader, the model benchmark spike
+- pick integration (paywall retry, difficulty on the card)
+- the optional LLM "why" text
+- the P2 tables
 
 **Acceptance:**
-1. The model downloader shows the size and license, can resume, and checks the sha256.
-2. The first summary request loads the LLM with visible progress. The summary streams in, and a cached copy loads instantly the second time.
-3. The LLM process exits after the idle timeout and on Hibernate. There are no orphan `llama-server` processes after Quit or after a crash-restart.
-4. In Hibernate, AI buttons show "Switch to Standard" and never start the sidecar.
-5. `define_term` returns valid schema JSON. Explain → Add saves all fields.
-6. The benchmark results and the chosen default model are recorded in `docs/perf.md`.
+1. **Read** (widget, Today, Explore) opens the article in the in-app Reader. Failed and paywalled articles show a fallback with an "Open in browser" button.
+2. Difficulty and reading time appear on the pick card, in Explore and in the Reader header.
+3. The model downloader shows the size and license, can resume, and checks the sha256.
+4. The first AI use loads the model with visible progress. **Summarize** and B1 Summary stream in, and a cached copy loads instantly the second time.
+5. Free questions in the chat panel get streamed answers based on the article. The history is still there after reopening the story. Clear chat works.
+6. **Ask AI about this** on selected text puts the quote into the chat.
+7. The model process exits after the idle timeout and on Hibernate. There are no orphan `llama-server` processes after Quit or after a crash-restart.
+8. In Hibernate, the AI panel shows "AI is off" and never starts the model.
+9. The benchmark results and the chosen default model are recorded in `docs/perf.md`.
 
-### P4 — Voice tutor
+### P3 — Learning & sources
 
-**Build:** §12 in full, the P4 tables, and the Talk page (setup, live transcript, history, review).
+**Build:** §7.11 (learn topics, learning score, Today's lesson, learning sources) and §7.12 (add a source from an example), plus the P3 tables and migration.
+
+**Acceptance:**
+1. With Learn on for Data Engineering, a **Today's lesson** is chosen each day. It is a tutorial or explainer, not a news item and not the same as the story.
+2. On a live-feed run, at least 8 of the top 10 lesson candidates are judged by hand to be learning material. The result is recorded in `docs/qa/P3.md`.
+3. Training-course spam and news announcements are never chosen as lessons (unit tests with real titles).
+4. Widget: the Story | Lesson switch works. Today shows both cards. Explore has **Learning only**.
+5. Pasting an example URL finds the site's feed for Substack, WordPress, Ghost, Hugo, Medium and a site with `<link rel="alternate">`. A site with no feed shows a clear message. A duplicate shows "already in your list".
+6. The example article is saved and can be opened in the Reader.
+7. The daily notification mentions both picks, and there is still only one per day.
+
+### P4 — Words: popup, Word Book, Practice
+
+**Build:** §8.5 popup (macOS dictionary + AI explain), TTS (🔊, Listen), §9 Word Book, §10 Practice, highlights for known words, and the P4 tables.
+
+**Acceptance:**
+1. Selecting a word shows its dictionary meaning and pronunciation within 300 ms, offline. 🔊 speaks it. **Explain simply** gives the AI meaning.
+2. **Add to Word Book** saves the item with its meaning and sentence context. Re-adding it adds a context instead of a duplicate.
+3. A 10-item quiz follows the §10.2 selection order. The buttons update FSRS fields and counters. The result score matches the formula and is stored.
+4. The due count in the widget updates after a quiz.
+5. Items without a meaning are auto-filled by the AI when it is loaded. CSV export works.
+6. Unit tests cover quiz selection buckets, FSRS grade mapping, status transitions and dictionary text parsing.
+
+### P5 — Voice tutor
+
+**Build:** §12 in full, the P5 tables, and the Talk page (setup, live transcript, history, review).
 
 **Acceptance:**
 1. The mic permission prompt appears on first use. The denied state is handled.
@@ -1166,12 +1341,12 @@ tech-and-english/
 7. The end-of-session review lists the observations with preselection. Only the selected items become `vocab_items`, linked to the conversation.
 8. No audio files exist on disk after a session (with default settings).
 
-### P5 — Packaging & polish
+### P6 — Packaging & polish
 
-- A signed and notarized `.app`/`.dmg` (needs an Apple Developer ID). Unsigned local builds are fine before this.
+- Ad-hoc signed `.app`/`.dmg` (personal use, Q7).
 - Sidecars bundled as `externalBin`.
 - A first-run model setup screen.
-- Model license review.
+- Model license review (informational).
 - An accessibility pass (keyboard navigation, VoiceOver labels).
 - An error-reporting UI (local only).
 
@@ -1182,7 +1357,7 @@ tech-and-english/
 - **A `Clock` trait** is injected into the scheduler, pick, notification, retention and SRS code. Tests use a fake clock. **No test sleeps.**
 - **Fixtures** live in `src-tauri/tests/fixtures/`: RSS 2.0, Atom, a broken feed, HN JSON (top ids + items), and HTML pages (normal and paywalled).
 - **An HTTP mock** (e.g. `wiremock`) for the feed and HN fetch tests.
-- **A `MockProvider`** for LLM-dependent logic. A small **golden-prompt suite** (P3/P4) runs against the real local model on demand (`cargo test -- --ignored`). It checks JSON validity and the correction behaviour on about 30 learner sentences.
+- **A `MockProvider`** for LLM-dependent logic. A small **golden-prompt suite** (P2/P5) runs against the real local model on demand (`cargo test -- --ignored`). It checks JSON validity and the correction behaviour on about 30 learner sentences.
 - **Frontend:** Vitest for pure logic (intent matching, quiz UI state, readability wrapper).
 - **Manual QA checklist** per phase, taken from its acceptance list, plus the perf measurements.
 
@@ -1197,6 +1372,7 @@ tech-and-english/
 - A personalized difficulty model
 - **Real pronunciation scoring** (phoneme-level)
 - Semantic dedupe and embedding-based ranking
+- **Suggesting other blogs similar to the user's examples** (C14; only the example's own feed is added in v1)
 - Conversation search
 - Weekly English / tech reports
 - Cloud LLM providers (the interface exists; no implementations yet)
@@ -1214,5 +1390,6 @@ tech-and-english/
 | Q3 | Show the Dock icon? | **Decided 2026-09-29:** hidden (menu-bar app); a setting can show it |
 | Q4 | Are the default feeds (§7.2) OK? | **Decided 2026-09-29:** yes, plus the AI and data-engineering feeds |
 | Q5 | How long to keep conversation transcripts | 90 days |
-| Q6 | Will an Apple Developer ID be available for signing (P5)? | Unsigned local builds until then |
-| Q7 | App license and distribution: personal use only, or shared or published? | **Decided 2026-09-29:** personal use only. P5 uses ad-hoc signing (§2.2), and the license review is informational. |
+| Q6 | Will an Apple Developer ID be available for signing (P6)? | Unsigned local builds until then |
+| Q7 | App license and distribution: personal use only, or shared or published? | **Decided 2026-09-29:** personal use only. P6 uses ad-hoc signing (§2.2), and the license review is informational. |
+| Q8 | Should the lesson prefer short or long articles? | No preference in v1. Long bodies (≥ 1,200 words) get a small learning-score bonus. |

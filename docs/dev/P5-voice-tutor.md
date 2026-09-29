@@ -1,12 +1,12 @@
-# P4 — Voice English tutor (dev spec)
+# P5 — Voice English tutor (dev spec)
 
 - **Goal:** a push-to-talk conversation about an article.
   - The tutor speaks at the learner's level and corrects important mistakes.
   - It asks the learner to repeat corrections, and it explains words without losing the topic.
   - It runs simple pronunciation drills.
   - At the end, it offers a review where the learner chooses what goes into the Word Book.
-- **SPEC sections:** §6 (voice rows), §12, §13 (P4), §14 (P4), §16, §18 P4.
-- **Branch:** `p4/voice-tutor` → tag `v0.4.0`
+- **SPEC sections:** §6 (voice rows), §12, §13 (P5), §14 (P5), §16, §18 P5.
+- **Branch:** `p5/voice-tutor` → tag `v0.5.0`
 
 ## 0. Scope
 
@@ -41,7 +41,7 @@
 
 ## 2. T0 — Spike: whisper-server + tutor schema (½ day)
 
-Record the results in `docs/dev/notes/P4-whisper-and-tutor.md`.
+Record the results in `docs/dev/notes/P5-whisper-and-tutor.md`.
 
 **whisper-server:**
 1. Confirm the binary names installed by the formula (`whisper-server`, `whisper-cli`).
@@ -51,7 +51,7 @@ Record the results in `docs/dev/notes/P4-whisper-and-tutor.md`.
 5. Note whether it supports any authentication. We expect that it does not; see Risks.
 6. Measure the transcription time of 3 s, 8 s and 20 s clips with `base.en` and `small.en`, and the RSS memory.
 
-**llama.cpp JSON schema** (using P3's setup):
+**llama.cpp JSON schema** (using P2's setup):
 1. Confirm that the `anyOf: [null, object]` form for `correction` is supported by the grammar conversion.
 2. Confirm that **properties are generated in schema order**, so `reply` streams first. If they are not, split the output into two parts (see §6.3 fallback).
 
@@ -63,7 +63,7 @@ Record the results in `docs/dev/notes/P4-whisper-and-tutor.md`.
 
 ## 3. Shared sidecar manager (refactor)
 
-- Extract the generic parts of P3's `AiManager` into `sidecar::SidecarManager<S: SidecarSpec>`:
+- Extract the generic parts of P2's `AiManager` into `sidecar::SidecarManager<S: SidecarSpec>`:
   - launch
   - health check
   - PID file and orphan cleanup
@@ -75,8 +75,8 @@ Record the results in `docs/dev/notes/P4-whisper-and-tutor.md`.
 - `LlmSidecar` and `WhisperSidecar` implement `SidecarSpec`. `ai://status` carries `component: "llm" | "stt"`.
 - **Whisper launch:** `whisper-server -m <models>/<stt model> --host 127.0.0.1 --port <free> -t 4 -l en` (flags confirmed in T0).
 - **Whisper idle timeout:** 5 min after a session ends. A voice session holds guards on **both** sidecars.
-- **Binary resolution:** the same order as P3 §4.3, with `settings.ai.whisperServerPath`.
-- All P3 AiManager tests must still pass after the refactor, and they are duplicated for the whisper spec.
+- **Binary resolution:** the same order as P2 §8.3, with `settings.ai.whisperServerPath`.
+- All P2 AiManager tests must still pass after the refactor, and they are duplicated for the whisper spec.
 
 ---
 
@@ -338,7 +338,7 @@ Channel `VoiceEvent`:
 ### 8.4 Pronunciation drill
 
 1. **Start:** from the Pronounce intent (`w` = the word, with quotes, "the word" and trailing punctuation stripped), **or** from UI: tap a word in a tutor bubble → **[Practise saying]** → `start_drill {word}`.
-2. **Hint:** the cached `define_term` result for the word, if there is one; otherwise one `define_term` call (P3) for `syllables`. If it fails, there is no hint.
+2. **Hint:** the cached `define_term` result for the word, if there is one; otherwise one `define_term` call (P4) for `syllables`. If it fails, there is no hint.
 3. The tutor says "Listen: <word>". The frontend speaks the word at rate 0.6, and the UI shows the hint with the label "hint".
 4. The user records. A **pass** means the normalized transcript contains the target word as a token. Plural and `-ed`/`-ing` variants of the target also pass.
    - Pass → "Good!", then back to `Discuss` (continue the conversation).
@@ -357,11 +357,11 @@ Channel `VoiceEvent`:
 - **Preselection guidance** in the prompt: preselect words the learner asked about, corrections (especially ones they repeated), and technical terms central to the article. Don't preselect very common words.
 - **Fallback** (LLM error or invalid output twice): build the suggestions directly from the observations. Preselect all unknown words/phrases and corrections; do not preselect useful sentences.
 - **Stats** for the summary screen: speaking minutes, the number of distinct unknown words/phrases, corrections, and pronunciation drills.
-- **Apply** creates items through `vocab::add` (P2):
+- **Apply** creates items through `vocab::add` (P4):
   - `context.sentence` = the user or tutor turn where the item appeared
   - `conversation_id` and `article_id` are set
   - for corrections: `kind=correction`, `text=corrected`, `notes = JSON {original, explanation}`
-  - `meaning_simple` comes from the explanation when present; otherwise it stays pending, and P3 auto-fill completes it later
+  - `meaning_simple` comes from the explanation when present; otherwise it stays pending, and P4 auto-fill completes it later
   - each observation's `saved_item_id` is set
 
 ---
@@ -384,14 +384,14 @@ The frontend reports `tts_start` (the `speechSynthesis` `start` event of the fir
 
 ---
 
-## 11. Database — `migrations/0004_voice.sql`
+## 11. Database — `migrations/0005_voice.sql`
 
 - `conversations`, `conversation_turns` and `learning_observations` exactly as in SPEC §13.
 - `CREATE INDEX idx_turns_conv ON conversation_turns(conversation_id, seq);`
 - **Retention:**
   - Articles with conversations are never deleted.
   - Conversations older than `voice.keepTranscriptsDays` (default 90; 0 = forever) are deleted, unless `review_status = 'pending'` and the conversation is younger than 180 days.
-  - When a conversation is deleted, the app also deletes its `vocab_contexts` rows with that `conversation_id` (there is no foreign key; see P2 §2).
+  - When a conversation is deleted, the app also deletes its `vocab_contexts` rows with that `conversation_id` (there is no foreign key; see P4 §2).
 
 ---
 
@@ -476,7 +476,7 @@ The seed cases (extend them to 30):
 |---|---|---|---|
 | T0 | Spike: whisper-server, schema order, mic permission | – | Notes written; spec deltas applied; STT models in `models.json` |
 | T1 | Migration 0004 + repos + retention | – | Migration/repo/retention tests |
-| T2 | SidecarManager refactor + WhisperSidecar | T0 | P3 tests green; whisper lifecycle tests with the fake launcher |
+| T2 | SidecarManager refactor + WhisperSidecar | T0 | P2 tests green; whisper lifecycle tests with the fake launcher |
 | T3 | Audio capture + Info.plist + permission errors | T0 | Manual: meter moves; the mic indicator is off after stop; 60 s cap; silence notice. Unit: resample length ≈ duration × 16 k |
 | T4 | STT client + hallucination filter | T2 | wiremock tests; filter tests |
 | T5 | ReplyExtractor | – | §14 tests |
@@ -485,16 +485,16 @@ The seed cases (extend them to 30):
 | T8 | Session engine + commands + channel | T4–T7, T1 | Phase transition tests; typed-mode conversation works end to end |
 | T9 | Pronunciation drill | T8 | Drill tests; manual drill |
 | T10 | Session review + apply | T8 | Review/fallback/apply tests |
-| T11 | Talk session UI + speech queue + PTT + barge-in | T8 | Manual: SPEC §18 P4 items 1–5 |
-| T12 | Review + history UI | T10 | Manual: SPEC §18 P4 item 7 |
+| T11 | Talk session UI + speech queue + PTT + barge-in | T8 | Manual: SPEC §18 P5 items 1–5 |
+| T12 | Review + history UI | T10 | Manual: SPEC §18 P5 item 7 |
 | T13 | Hibernate/Quit handling + latency diagnostics | T8 | Manual: dialog flows; diagnostics show p50/p90 |
-| T14 | QA + perf | all | `docs/qa/P4.md` complete; latency p50/p90 over 20 real turns recorded; no audio files on disk (SPEC §18 P4 item 8) |
+| T14 | QA + perf | all | `docs/qa/P5.md` complete; latency p50/p90 over 20 real turns recorded; no audio files on disk (SPEC §18 P5 item 8) |
 
 Suggested order: T0 → (T1 ∥ T2 ∥ T5 ∥ T6) → (T3 ∥ T4 ∥ T7) → T8 → (T9 ∥ T10 ∥ T11 ∥ T13) → T12 → T14
 
 ---
 
-## 16. Manual QA checklist (`docs/qa/P4.md`)
+## 16. Manual QA checklist (`docs/qa/P5.md`)
 
 - [ ] First mic use on the bundled app → the macOS prompt with our text; deny → a clear help screen; allow → works
 - [ ] Start a session on today's pick → a loading indicator, then the tutor introduces the article and asks a question
@@ -515,6 +515,6 @@ Suggested order: T0 → (T1 ∥ T2 ∥ T5 ∥ T6) → (T3 ∥ T4 ∥ T7) → T8 
 | Latency over budget on M1 | `base.en`; 4B model; prompt caching with a fixed system prompt; sentence streaming; the diagnostics panel shows which stage is slow |
 | Whisper "fixes" learner grammar | temperature 0 with no prompt; golden suite built on typed input; accept the limitation and document it |
 | Whisper hallucinations on silence | RMS gate + phrase filter (§5) |
-| whisper-server has no auth | Binds to 127.0.0.1 on a random port and only runs during sessions. P5 may switch to in-process `whisper-rs` if this becomes a concern. |
+| whisper-server has no auth | Binds to 127.0.0.1 on a random port and only runs during sessions. P6 may switch to in-process `whisper-rs` if this becomes a concern. |
 | Mic permission attributed to the terminal in dev | Test permission flows on the bundled app only |
 | Schema key order not guaranteed | The `@@META@@` fallback (§6.3) |

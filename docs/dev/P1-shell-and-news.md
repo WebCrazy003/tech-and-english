@@ -1,4 +1,4 @@
-# P1 — App shell & News engine (dev spec)
+# P1 — App shell & News engine (dev spec) — ✅ done (v0.1.0)
 
 - **Goal:** a menu-bar app with a floating widget. It fetches RSS and Hacker News, ranks stories against the user's topics, picks one story a day and sends notifications. **No AI, no reader, no vocabulary.**
 - **SPEC sections:** §5, §6 (non-AI parts), §7, §13 (P1 tables), §14 (P1), §16, §18 P1.
@@ -19,7 +19,7 @@
 **Out of scope (later phases):**
 - Body extraction, paywall detection, difficulty, reading time → P2.
 - Reader → P2. **In P1, "Read" opens the article in the default browser.**
-- Listen / Easy Summary / Discuss buttons → hidden until P2–P4.
+- Listen / Easy Summary / Discuss buttons → hidden until P2–P5.
 
 > **Adjustment to SPEC §7.8 for P1:** selection steps 1–3 (extraction, paywall retry, difficulty) are skipped. `PickService` still has a `post_select` hook that P2 fills in.
 >
@@ -371,13 +371,13 @@ pub fn high_interest_decision(ctx: &HiCtx) -> Decision  // Send | Skip(reason)
 ### 4.11 `mode.rs`
 
 - `ModeManager { mode: RwLock<Mode> }`. `set(mode)` persists to `app_state`, emits `mode://changed` and updates the tray checkmarks.
-- P1 has no sidecars. The hook `on_enter_hibernate` is an empty `Vec<Box<dyn Fn>>` that P3/P4 register into.
+- P1 has no sidecars. The hook `on_enter_hibernate` is an empty `Vec<Box<dyn Fn>>` that P2 (LLM) and P5 (Whisper) register into.
 
 ### 4.12 `retention.rs`
 
 This implements SPEC §7.10 in full. `0001_init.sql` creates the complete `articles` table from SPEC §13, including the `body_*`, `word_count` and `difficulty` columns. These stay empty until P2, but the body-clearing rule is implemented now so P2 doesn't need a migration for it.
 
-The "linked to vocabulary or a conversation" condition checks tables that are created in P2 and P4. In P1, an article is protected only if `saved = 1`. P2 and P4 each extend the retention query with a `NOT EXISTS` check against their own tables.
+The "linked to vocabulary or a conversation" condition checks tables that are created later (P2 chats, P4 vocabulary, P5 conversations). In P1, an article is protected only if `saved = 1`. Later phases each extend the retention query with a `NOT EXISTS` check against their own tables.
 
 ---
 
@@ -556,7 +556,7 @@ Onboarding pre-selects nothing; the user chooses.
 | First run | "Welcome! Set up your topics." + [Start] (→ onboarding) |
 | Pill | `● Today's pick` or `💤 Hibernate`. Click → back to card style. |
 
-The footer is empty in P1; P2 adds the due count.
+The footer shows a source status line in P1; P4 adds the due count.
 
 ### 8.2 Main window routes
 

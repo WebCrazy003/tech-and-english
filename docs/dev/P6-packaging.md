@@ -1,12 +1,12 @@
-# P5 — Packaging & polish (dev spec)
+# P6 — Packaging & polish (dev spec)
 
 - **Goal:** a self-contained `Tech English.app` / `.dmg` that runs on a clean Mac with **no Homebrew**.
   - The sidecars are bundled.
   - A first-run AI setup screen is added.
   - The licenses are reviewed.
   - An accessibility pass and a local-only error report are added.
-- **SPEC sections:** §18 P5, §15, §16
-- **Branch:** `p5/packaging` → tag `v1.0.0`
+- **SPEC sections:** §18 P6, §15, §16
+- **Branch:** `p6/packaging` → tag `v1.0.0`
 
 ## 0. Scope
 
@@ -32,7 +32,7 @@
 Prerequisite: `brew install cmake` (build machine only).
 
 ```bash
-LLAMA_TAG=<pinned tag>      # record in docs/dev/notes/P5-sidecars.md
+LLAMA_TAG=<pinned tag>      # record in docs/dev/notes/P6-sidecars.md
 WHISPER_TAG=<pinned tag>
 TRIPLE=aarch64-apple-darwin
 
@@ -55,7 +55,7 @@ otool -L src-tauri/binaries/*-$TRIPLE | grep -v -E "/usr/lib/|/System/Library/" 
 ```
 
 - Check the exact CMake option and target names against each repository's build docs for the pinned tags.
-- **Pin the tags to the versions P3 and P4 were tested with.** Re-run the P3 T0 and P4 T0 spike checks against the built binaries.
+- **Pin the tags to the versions P2 and P5 were tested with.** Re-run the P2 T0 and P5 T0 spike checks against the built binaries.
 - `src-tauri/binaries/` is git-ignored. CI or release builds run the script first.
 - `tauri.conf.json`:
 
@@ -66,7 +66,7 @@ otool -L src-tauri/binaries/*-$TRIPLE | grep -v -E "/usr/lib/|/System/Library/" 
 }
 ```
 
-Tauri copies the sidecars to `Contents/MacOS/`, next to the main executable. This matches step 2 of the binary resolution order in P3 §4.3, so no code change is needed. A log line at startup records which path was resolved.
+Tauri copies the sidecars to `Contents/MacOS/`, next to the main executable. This matches step 2 of the binary resolution order in P2 §8.3, so no code change is needed. A log line at startup records which path was resolved.
 
 ---
 
@@ -107,7 +107,7 @@ AI features (optional, runs on this Mac)
 ```
 
 - The downloads continue in the background, with progress shown in the widget footer ("Downloading AI 42 %").
-- **Later** → AI buttons show the first-use dialog from P3 §8.5.
+- **Later** → AI buttons show the setup card from P2 §12.
 - **Before** offering the downloads, check the sidecar binaries: run `llama-server --version` and `whisper-server --help`. If one fails, show "AI engine missing — reinstall the app".
 
 ---
@@ -168,12 +168,12 @@ AI features (optional, runs on this Mac)
 | T2 | Entitlements + Info.plist + signing config (both paths) | T1 | §2 verification commands pass (Developer ID) **or** the ad-hoc build launches and the mic works |
 | T3 | First-run AI setup | T1 | Manual: fresh profile → download both → AI and voice work |
 | T4 | Licenses + About window | – | Generated files are present; the About window lists everything in §4; review gate recorded |
-| T5 | Accessibility pass | – | Checklist in `docs/qa/P5.md` §A done |
+| T5 | Accessibility pass | – | Checklist in `docs/qa/P6.md` §A done |
 | T6 | Crash/diagnostics | – | Forced panic (debug menu) → the next launch shows the dialog; the diagnostics contain no article, vocab or transcript text |
 | T7 | Final perf run | T1–T3 | `docs/perf.md` v1.0.0 section |
 | T8 | Clean-machine test + README install guide | all | §9 checklist passes on a new macOS user account with Homebrew's binaries unlinked |
 
-## 9. Clean-machine checklist (`docs/qa/P5.md`)
+## 9. Clean-machine checklist (`docs/qa/P6.md`)
 
 - [ ] Install from the DMG (drag to Applications); first launch passes Gatekeeper (notarized) or the documented ad-hoc steps
 - [ ] Onboarding → AI setup → downloads complete; the sha is verified
