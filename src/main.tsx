@@ -19,6 +19,10 @@ import WordBook from "./pages/words/WordBook";
 import WordDetail from "./pages/words/WordDetail";
 import { PracticeResult, PracticeSession, PracticeStart } from "./pages/words/Practice";
 import { startWordsStore } from "./stores/words";
+import TalkSetup from "./pages/talk/TalkSetup";
+import TalkSession from "./pages/talk/TalkSession";
+import TalkReview from "./pages/talk/TalkReview";
+import TalkHistory, { TalkTranscript } from "./pages/talk/TalkHistory";
 import { startAiStore } from "./stores/ai";
 import { api, EVENTS, onEvent } from "./lib/api";
 import { startAppStore } from "./stores/app";
@@ -38,6 +42,11 @@ const router = createHashRouter([
       { path: "practice", element: <PracticeStart /> },
       { path: "practice/session", element: <PracticeSession /> },
       { path: "practice/result", element: <PracticeResult /> },
+      { path: "talk", element: <TalkSetup /> },
+      { path: "talk/session", element: <TalkSession /> },
+      { path: "talk/review/:id", element: <TalkReview /> },
+      { path: "talk/history", element: <TalkHistory /> },
+      { path: "talk/history/:id", element: <TalkTranscript /> },
       {
         path: "settings",
         element: <SettingsLayout />,

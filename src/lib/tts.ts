@@ -4,6 +4,8 @@ export interface TtsOptions {
   rate: number;
   voiceURI?: string | null;
   volume?: number;
+  /** Called when the audio actually starts (latency measurement, P5). */
+  onStart?: () => void;
 }
 
 const synth = (): SpeechSynthesis | null => (typeof window !== "undefined" && "speechSynthesis" in window ? window.speechSynthesis : null);
@@ -82,6 +84,7 @@ export async function speak(text: string, opts: TtsOptions): Promise<void> {
     } else {
       u.lang = "en-US";
     }
+    if (opts.onStart) u.onstart = opts.onStart;
     u.onend = () => {
       alive.delete(u);
       resolve();

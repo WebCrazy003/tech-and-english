@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { api } from "../../lib/api";
+import { useEffect, useState } from "react";
+import { api, type LatencyReport, type Percentiles } from "../../lib/api";
 import { useApp } from "../../stores/app";
 import { gb, useAi } from "../../stores/ai";
 import { toastError } from "../../stores/toast";
@@ -124,6 +124,56 @@ export default function Ai() {
           <input type="checkbox" checked={ai.llmWhy} onChange={(e) => void patch({ ai: { llmWhy: e.target.checked } })} />
         </label>
       </div>
+
+      <Diagnostics />
     </div>
+  );
+}
+
+const ms = (x: number | null) => (x == null ? "–" : `${(x / 1000).toFixed(1)} s`);
+
+/** Voice tutor speed (P5 §10): end of speech → first tutor audio, and each stage. */
+function Diagnostics() {
+  const [r, setR] = useState<LatencyReport | null>(null);
+  useEffect(() => {
+    api.voiceLatency().then(setR).catch(() => {});
+  }, []);
+  if (!r) return null;
+  const rows: [string, Percentiles][] = [
+    ["End of speech → first tutor audio", r.total],
+    ["Speech to text", r.stt],
+    ["AI: first word", r.firstToken],
+    ["AI: first sentence", r.firstSentence],
+    ["AI: whole answer", r.llmDone],
+  ];
+  return (
+    <>
+      <div className={styles.groupTitle}>Diagnostics · voice tutor speed</div>
+      <div className={styles.group}>
+        {r.total.count === 0 && r.stt.count === 0 ? (
+          <div className={styles.field}>
+            <div className={styles.fieldHelp}>No spoken turns yet in this app session. Talk to the tutor, then look here.</div>
+          </div>
+        ) : (
+          rows.map(([label, p]) => (
+            <div key={label} className={styles.field}>
+              <div className={styles.fieldText}>
+                <div className={styles.fieldLabel}>{label}</div>
+                <div className={styles.fieldHelp}>{p.count} turns (last 50)</div>
+              </div>
+              <span className="muted">
+                typical {ms(p.p50)} · slow {ms(p.p90)}
+              </span>
+            </div>
+          ))
+        )}
+        <div className={styles.field}>
+          <div className={styles.fieldHelp}>Goal: typical ≤ 3 s, slow ≤ 5 s from the end of your speech to the tutor’s voice.</div>
+          <button className="ghost" onClick={() => api.voiceLatency().then(setR).catch(toastError)}>
+            Refresh
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

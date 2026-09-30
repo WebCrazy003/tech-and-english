@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { api, type Mode } from "../lib/api";
+import { ApiError, api, type Mode } from "../lib/api";
+import { endTalk } from "../stores/talk";
 import { timeAgo } from "../lib/format";
 import { useApp } from "../stores/app";
 import { toast, toastError } from "../stores/toast";
@@ -12,24 +13,38 @@ const NAV = [
   { to: "/explore", label: "Explore", icon: "☰", key: "2" },
   { to: "/wordbook", label: "Word Book", icon: "📖", key: "3" },
   { to: "/practice", label: "Practice", icon: "✎", key: "4" },
-  { to: "/settings", label: "Settings", icon: "⚙︎", key: "5" },
+  { to: "/talk", label: "Talk", icon: "🎙", key: "5" },
+  { to: "/settings", label: "Settings", icon: "⚙︎", key: "6" },
 ];
 
 function ModeSwitch() {
   const { mode, setMode } = useApp();
-  const pick = (m: Mode) => setMode(m).catch(toastError);
+  const navigate = useNavigate();
+  const pick = async (m: Mode) => {
+    try {
+      await setMode(m);
+    } catch (e) {
+      // A conversation is running: ask first, then end it (its review waits in History).
+      if (e instanceof ApiError && e.code === "session_active") {
+        if (!window.confirm("End the conversation and switch to Hibernate? You can finish the review later.")) return;
+        await endTalk("hibernate");
+        await setMode(m).catch(toastError);
+        void navigate("/talk/history");
+      } else toastError(e);
+    }
+  };
   return (
     <div className={styles.modeBox}>
       <div className={styles.modeLabel}>Mode</div>
       <div className={styles.segmented} role="radiogroup" aria-label="Mode">
-        <button role="radio" aria-checked={mode === "standard"} className={mode === "standard" ? styles.on : ""} onClick={() => pick("standard")}>
+        <button role="radio" aria-checked={mode === "standard"} className={mode === "standard" ? styles.on : ""} onClick={() => void pick("standard")}>
           Standard
         </button>
         <button
           role="radio"
           aria-checked={mode === "hibernate"}
           className={mode === "hibernate" ? styles.onHibernate : ""}
-          onClick={() => pick("hibernate")}
+          onClick={() => void pick("hibernate")}
         >
           Hibernate
         </button>

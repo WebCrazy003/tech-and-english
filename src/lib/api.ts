@@ -45,6 +45,19 @@ export interface Settings {
   readerAiPanelOpen: boolean;
   tts: TtsSettings;
   learning: LearningSettings;
+  voice: VoiceSettingsDto;
+  debug: { keepAudio: boolean };
+}
+
+export type CorrectionPolicy = "low" | "medium" | "high";
+
+export interface VoiceSettingsDto {
+  sttModel: string | null;
+  correction: CorrectionPolicy;
+  /** null = the level's preset */
+  rate: number | null;
+  keepTranscriptsDays: number;
+  vadAutoStop: boolean;
 }
 
 export interface TtsSettings {
@@ -61,6 +74,132 @@ export interface LearningSettings {
   quizSize: number;
   desiredRetention: number;
   autoPronounce: boolean;
+}
+
+// ---------------------------------------------------------------- voice tutor (P5)
+
+export interface SessionSettings {
+  level: 1 | 2 | 3;
+  rate: number;
+  pauseMs: number;
+  correction: CorrectionPolicy;
+  voiceUri: string | null;
+}
+
+export interface Correction {
+  original: string;
+  corrected: string;
+  explanation: string;
+  askRepeat: boolean;
+}
+
+export interface DrillInfo {
+  word: string;
+  hint: string | null;
+  attempt: number;
+  maxAttempts: number;
+}
+
+export type TalkPhase = "discuss" | "awaitRepeat" | "drill";
+
+export type VoiceEvent =
+  | { kind: "loading"; component: "llm" | "stt" | "summary" }
+  | { kind: "ready"; conversationId: number; settings: SessionSettings }
+  | { kind: "transcript"; text: string }
+  | { kind: "notice"; text: string }
+  | { kind: "tutorSentence"; turn: number; text: string; rateDelta: number | null; rate: number | null }
+  | {
+      kind: "tutorDone";
+      turn: number;
+      turnId: number;
+      text: string;
+      correction: Correction | null;
+      phase: TalkPhase;
+      repeatTarget: string | null;
+      drill: DrillInfo | null;
+      local: boolean;
+    }
+  | { kind: "localAction"; action: "replay" | "slower" | "faster" | "end"; rate: number | null }
+  | { kind: "error"; code: string; message: string };
+
+export interface ActiveSession {
+  conversationId: number;
+  articleId: number | null;
+  articleTitle: string | null;
+  settings: SessionSettings;
+  recording: boolean;
+}
+
+export interface VoiceSetup {
+  settings: SessionSettings;
+  active: ActiveSession | null;
+  sttModel: boolean;
+  sttEngine: string | null;
+  mic: "granted" | "denied" | "notDetermined";
+}
+
+export interface Conversation {
+  id: number;
+  articleId: number | null;
+  articleTitle: string | null;
+  settings: Partial<SessionSettings>;
+  startedAt: string;
+  endedAt: string | null;
+  userSpeakingSeconds: number;
+  reviewStatus: "pending" | "done" | "skipped";
+  corrections: number;
+}
+
+export interface ConversationTurn {
+  id: number;
+  seq: number;
+  role: "user" | "tutor";
+  text: string;
+  meta: { correction?: Correction | null; local?: boolean } | null;
+  createdAt: string;
+}
+
+export interface Suggestion {
+  id: string;
+  kind: "word" | "phrase" | "term" | "correction" | "sentence";
+  text: string;
+  meaningSimple: string | null;
+  note: string | null;
+  preselected: boolean;
+  observationIds: number[];
+}
+
+export interface SessionReview {
+  conversationId: number;
+  articleTitle: string | null;
+  startedAt: string;
+  reviewStatus: "pending" | "done" | "skipped";
+  stats: { speakingMinutes: number; newWords: number; corrections: number; drills: number };
+  suggestions: Suggestion[];
+  source: "llm" | "fallback";
+}
+
+export interface Percentiles {
+  count: number;
+  p50: number | null;
+  p90: number | null;
+}
+
+export interface LatencyReport {
+  total: Percentiles;
+  stt: Percentiles;
+  firstToken: Percentiles;
+  firstSentence: Percentiles;
+  llmDone: Percentiles;
+  recent: {
+    turn: number;
+    typed: boolean;
+    sttMs: number | null;
+    firstTokenMs: number | null;
+    firstSentenceMs: number | null;
+    llmDoneMs: number | null;
+    ttsStartMs: number | null;
+  }[];
 }
 
 // ---------------------------------------------------------------- words (P4)
@@ -464,7 +603,7 @@ export const api = {
   getSettings: () => call<Settings>("get_settings"),
   updateSettings: (patch: DeepPartial<Settings>) => call<Settings>("update_settings", { patch }),
   getMode: () => call<Mode>("get_mode"),
-  setMode: (mode: Mode) => call<Mode>("set_mode", { mode }),
+  setMode: (mode: Mode, force = false) => call<Mode>("set_mode", { mode, force }),
   getAutostart: () => call<boolean>("get_autostart"),
   setAutostart: (enabled: boolean) => call<boolean>("set_autostart", { enabled }),
 
@@ -570,6 +709,46 @@ export const api = {
   finishQuiz: (sessionId: number) => call<QuizResult>("finish_quiz", { sessionId }),
   listQuizHistory: (limit = 5) => call<QuizResult[]>("list_quiz_history", { limit }),
 
+  voiceSetup: () => call<VoiceSetup>("voice_setup"),
+  startVoiceSession: (
+    args: { articleId: number | null; settings: SessionSettings; force?: boolean },
+    onEvent: (e: VoiceEvent) => void,
+  ) => {
+    const channel = new Channel<VoiceEvent>();
+    channel.onmessage = onEvent;
+    return call<number>("start_voice_session", { args: { ...args, force: args.force ?? false }, channel });
+  },
+  startRecording: () => call<void>("start_recording"),
+  stopRecording: (onEvent: (e: VoiceEvent) => void) => {
+    const channel = new Channel<VoiceEvent>();
+    channel.onmessage = onEvent;
+    return call<void>("stop_recording", { channel });
+  },
+  sendTextTurn: (text: string, onEvent: (e: VoiceEvent) => void) => {
+    const channel = new Channel<VoiceEvent>();
+    channel.onmessage = onEvent;
+    return call<void>("send_text_turn", { text, channel });
+  },
+  startDrill: (word: string, onEvent: (e: VoiceEvent) => void) => {
+    const channel = new Channel<VoiceEvent>();
+    channel.onmessage = onEvent;
+    return call<void>("start_drill", { word, channel });
+  },
+  updateSessionSettings: (patch: { rate?: number; level?: number; correction?: CorrectionPolicy }) =>
+    call<SessionSettings>("update_session_settings", { patch }),
+  getActiveSession: () => call<ActiveSession | null>("get_active_session"),
+  endVoiceSession: (reason: "user" | "hibernate" | "quit") =>
+    call<SessionReview | null>("end_voice_session", { reason }),
+  getSessionReview: (conversationId: number) => call<SessionReview>("get_session_review", { conversationId }),
+  applySessionReview: (conversationId: number, selected: Suggestion[]) =>
+    call<number>("apply_session_review", { conversationId, selected }),
+  listConversations: () => call<Conversation[]>("list_conversations"),
+  getConversation: (id: number) =>
+    call<{ conversation: Conversation; turns: ConversationTurn[] }>("get_conversation", { id }),
+  deleteConversations: () => call<number>("delete_conversations"),
+  reportLatency: (turn: number, ttsStartMs: number) => call<void>("report_latency", { turn, ttsStartMs }),
+  voiceLatency: () => call<LatencyReport>("voice_latency"),
+
   setWidgetStyle: (args: { style?: WidgetStyle; alwaysOnTop?: boolean }) =>
     call<WidgetSettings>("set_widget_style", { args }),
   showMain: (route?: string) => call<void>("show_main", { route: route ?? null }),
@@ -601,6 +780,9 @@ export const EVENTS = {
   aiStatus: "ai://status",
   aiDownload: "ai://download",
   vocabChanged: "vocab://changed",
+  voiceActive: "voice://active",
+  voiceLevel: "voice://level",
+  voiceAutostop: "voice://autostop",
 } as const;
 
 export function onEvent<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {

@@ -52,3 +52,14 @@ export function splitKeywords(text: string): string[] {
   }
   return out;
 }
+
+/** "Sep 30, 08:12" */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+}
+
+/** "0:42", "12:05" (minutes:seconds) */
+export function clock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}

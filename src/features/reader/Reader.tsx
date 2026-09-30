@@ -171,6 +171,9 @@ export default function Reader() {
                 >
                   {speech.speaking ? "■ Stop" : "🔊 Listen"}
                 </button>
+                <button className="ghost" onClick={() => navigate(`/talk?article=${a.id}`)} title="Speak English about this story">
+                  🎙 Talk about this
+                </button>
                 <button className="ghost" onClick={() => api.openExternal(a.url)} title="Open in browser">
                   Open in browser ↗
                 </button>

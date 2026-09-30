@@ -7,6 +7,7 @@ import { emit } from "@tauri-apps/api/event";
 import defaultTopics from "../../src-tauri/resources/default_topics.json";
 import defaultFeeds from "../../src-tauri/resources/default_feeds.json";
 import type { Channel } from "@tauri-apps/api/core";
+import { createVoiceMock } from "./mockVoice";
 import type {
   AddFromExample,
   DictEntry,
@@ -78,6 +79,8 @@ function install() {
     readerAiPanelOpen: true,
     tts: { voiceUri: null, rate: 0.85, wordRate: 0.7, volume: 1, pauseMs: 400 },
     learning: { quizSize: 10, desiredRetention: 0.9, autoPronounce: true },
+    voice: { sttModel: null, correction: "high", rate: null, keepTranscriptsDays: 90, vadAutoStop: false },
+    debug: { keepAudio: false },
   };
   let mode: "standard" | "hibernate" = "standard";
   let nextId = 100;
@@ -186,6 +189,11 @@ function install() {
       license: "Apache-2.0", licenseUrl: "https://huggingface.co/google", recommendedRamGb: 12, default: false,
       downloaded: false, active: false, partialBytes: 0, downloading: false,
     },
+    {
+      id: "whisper-base.en", role: "stt", displayName: "Whisper base.en (speech to text)", file: "ggml-base.en.bin", sizeBytes: 147964211,
+      license: "MIT", licenseUrl: "https://github.com/ggml-org/whisper.cpp", recommendedRamGb: 1, default: true,
+      downloaded: true, active: true, partialBytes: 0, downloading: false,
+    },
   ];
   let aiState: "unloaded" | "loading" | "ready" = "unloaded";
   /** Fake streaming: sends `text` word by word to the channel. */
@@ -267,9 +275,16 @@ function install() {
     if (mode === "hibernate") throw { code: "hibernating", message: "unavailable in hibernate mode" };
   };
 
+  const voice = createVoiceMock(
+    () => settings,
+    (id) => articles.find((a) => a.id === id)?.title ?? null,
+  );
+
   mockIPC(
     (cmd, raw) => {
       const p = (raw ?? {}) as Record<string, never>;
+      const v = voice(cmd, p);
+      if (v.handled) return v.value;
       switch (cmd) {
         case "get_settings":
           return settings;

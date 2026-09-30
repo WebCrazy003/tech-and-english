@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type ArticleListItem, type Mode } from "../../lib/api";
+import { ApiError, api, EVENTS, onEvent, type ArticleListItem, type Mode } from "../../lib/api";
 import { shortAge, timeAgo } from "../../lib/format";
 import { useApp } from "../../stores/app";
 import { AiDot } from "../../features/ai/AiSetup";
@@ -32,7 +32,11 @@ function ModeBadge({ mode }: { mode: Mode }) {
   const setMode = useApp((s) => s.setMode);
   const choose = (m: Mode) => {
     setOpen(false);
-    setMode(m).catch(toastError);
+    setMode(m).catch((e) => {
+      // A conversation is running: the main window asks first (P5 §13).
+      if (e instanceof ApiError && e.code === "session_active") void api.showMain("/talk/session?confirm=hibernate");
+      else toastError(e);
+    });
   };
   return (
     <div className={styles.badgeWrap} ref={ref}>
@@ -202,10 +206,24 @@ function Footer() {
       .catch(() => setStatus(""));
   }, [newsVersion]);
   const words = due && due.total > 0 ? `📚 ${due.due} due · ${due.new} new` : null;
+  // P5: a voice session is running.
+  const [talking, setTalking] = useState(false);
+  useEffect(() => {
+    api
+      .getActiveSession()
+      .then((a) => setTalking(!!a))
+      .catch(() => {});
+    const un = onEvent<{ active: boolean }>(EVENTS.voiceActive, (p) => setTalking(p.active));
+    return () => void un.then((f) => f());
+  }, []);
   return (
     <footer className={styles.footer}>
       <span className={styles.footerText}>{status}</span>
-      {words && (
+      {talking ? (
+        <button className={styles.practice} onClick={() => api.showMain("/talk/session").catch(toastError)}>
+          🎙 Talking… · Open
+        </button>
+      ) : words && (
         <button
           className={styles.practice}
           onClick={() => api.showMain("/practice").catch(toastError)}

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { api, type CorrectionPolicy } from "../../lib/api";
 import { accentOf, listEnglishVoices, pickDefaultVoice, speak, stop } from "../../lib/tts";
+import { DownloadButton } from "../../features/ai/AiSetup";
+import { gb, useAi } from "../../stores/ai";
 import { useApp } from "../../stores/app";
-import { toastError } from "../../stores/toast";
+import { toast, toastError } from "../../stores/toast";
 import styles from "../pages.module.css";
 import { useSettingsPatch } from "./useSettingsPatch";
 
@@ -94,6 +97,122 @@ export function VoiceSettings() {
         English “Premium” voice, then choose it here.
         {mode === "hibernate" && " Speaking is off in Hibernate."}
       </p>
+      <TutorSettings />
+    </div>
+  );
+}
+
+/** Voice tutor (P5): speech model, conversations, recording. */
+function TutorSettings() {
+  const settings = useApp((s) => s.settings);
+  const { overview, refresh } = useAi();
+  const patch = useSettingsPatch();
+  const [engine, setEngine] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    void refresh().catch(() => {});
+    api
+      .voiceSetup()
+      .then((s) => setEngine(s.sttEngine))
+      .catch(() => setEngine(null));
+  }, [refresh]);
+  if (!settings) return null;
+  const v = settings.voice;
+  const stt = overview?.models.filter((m) => m.role === "stt") ?? [];
+  return (
+    <div>
+      <div className={styles.groupTitle}>Voice tutor</div>
+      <div className={styles.group}>
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
+            <div className={styles.fieldLabel}>Speech engine (whisper-server)</div>
+            <div className={styles.fieldHelp}>
+              {engine === undefined ? "Looking…" : (engine ?? "Not found. Install it in Terminal: brew install whisper.cpp")}
+            </div>
+          </div>
+        </div>
+        {stt.map((m) => (
+          <div key={m.id} className={styles.field}>
+            <div className={styles.fieldText}>
+              <div className={styles.fieldLabel}>
+                {m.displayName} {m.default && <span className="faint">· recommended</span>}
+              </div>
+              <div className={styles.fieldHelp}>
+                {gb(m.sizeBytes)} · license {m.license}
+              </div>
+            </div>
+            <DownloadButton m={m} />
+            {m.downloaded &&
+              (m.active ? (
+                <span className="faint">In use</span>
+              ) : (
+                <button onClick={() => api.setActiveModel(m.id).then(refresh).catch(toastError)}>Use this</button>
+              ))}
+          </div>
+        ))}
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
+            <label htmlFor="corr">Corrections (default)</label>
+          </div>
+          <select
+            id="corr"
+            value={v.correction}
+            onChange={(e) => void patch({ voice: { correction: e.target.value as CorrectionPolicy } })}
+          >
+            <option value="low">Low – only meaning</option>
+            <option value="medium">Medium</option>
+            <option value="high">High – every clear mistake</option>
+          </select>
+        </div>
+        <label className={styles.field}>
+          <div className={styles.fieldText}>
+            <div className={styles.fieldLabel}>Stop recording when I stop speaking</div>
+            <div className={styles.fieldHelp}>
+              After 1.2 seconds of silence. Off: hold Space (or click the mic) while you speak.
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={v.vadAutoStop}
+            onChange={(e) => void patch({ voice: { vadAutoStop: e.target.checked } })}
+          />
+        </label>
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
+            <label htmlFor="keep">Keep conversations for</label>
+            <div className={styles.fieldHelp}>Only the text is kept. Audio is never saved.</div>
+          </div>
+          <select
+            id="keep"
+            value={v.keepTranscriptsDays}
+            onChange={(e) => void patch({ voice: { keepTranscriptsDays: Number(e.target.value) } })}
+          >
+            {[30, 90, 180, 365].map((d) => (
+              <option key={d} value={d}>
+                {d} days
+              </option>
+            ))}
+            <option value={0}>Forever</option>
+          </select>
+        </div>
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
+            <div className={styles.fieldLabel}>Delete conversation history</div>
+            <div className={styles.fieldHelp}>Words you added to the Word Book stay.</div>
+          </div>
+          <button
+            className="danger"
+            onClick={() => {
+              if (window.confirm("Delete all conversations? Your Word Book stays."))
+                api
+                  .deleteConversations()
+                  .then((n) => toast(`Deleted ${n} conversation${n === 1 ? "" : "s"}`))
+                  .catch(toastError);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -16,11 +16,16 @@ export default function WordPopup({
   articleId,
   onClose,
   onAskAi,
+  onPractise,
+  conversationId = null,
 }: {
   sel: WordSelection;
   articleId: number | null;
   onClose: () => void;
   onAskAi?: (question: string) => void;
+  /** Voice tutor (P5): start a pronunciation drill for the word. */
+  onPractise?: (term: string) => void;
+  conversationId?: number | null;
 }) {
   const mode = useApp((s) => s.mode);
   const hasModel = useAi((s) => s.overview?.models.some((m) => m.downloaded) ?? true);
@@ -95,7 +100,7 @@ export default function WordPopup({
         syllables: ai?.syllables ?? d?.syllables ?? null,
         examples: ai?.examples ?? d?.examples ?? [],
         collocations: ai?.collocations ?? [],
-        context: { sentence: sel.sentence || null, articleId },
+        context: { sentence: sel.sentence || null, articleId, conversationId },
       });
       toast(r.outcome === "created" ? `Added "${r.item.text}" to your Word Book` : `Added a new example for "${r.item.text}"`);
       onClose();
@@ -196,6 +201,17 @@ export default function WordPopup({
         {onAskAi && (
           <button className="ghost" onClick={() => onAskAi(`What does "${sel.term}" mean in this story?`)}>
             Ask AI
+          </button>
+        )}
+        {onPractise && (
+          <button
+            className="ghost"
+            onClick={() => {
+              onPractise(sel.term);
+              onClose();
+            }}
+          >
+            🗣 Practise saying
           </button>
         )}
       </div>
