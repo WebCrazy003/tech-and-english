@@ -1,0 +1,1 @@
+bytecode noun Computing a form of instruction code that is run by a virtual machine rather than directly by the processor: Java compiles to bytecode.

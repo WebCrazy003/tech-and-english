@@ -43,6 +43,154 @@ export interface Settings {
   showDockIcon: boolean;
   ai: AiSettings;
   readerAiPanelOpen: boolean;
+  tts: TtsSettings;
+  learning: LearningSettings;
+}
+
+export interface TtsSettings {
+  voiceUri: string | null;
+  /** Listen speed, 0.5–1.2 */
+  rate: number;
+  /** Single words (popup, quiz), 0.5–1.2 */
+  wordRate: number;
+  volume: number;
+  pauseMs: number;
+}
+
+export interface LearningSettings {
+  quizSize: number;
+  desiredRetention: number;
+  autoPronounce: boolean;
+}
+
+// ---------------------------------------------------------------- words (P4)
+
+export type VocabKind = "word" | "phrase" | "sentence" | "term" | "pronunciation" | "correction";
+export type VocabStatus = "new" | "learning" | "known";
+export type Grade = "forgot" | "unsure" | "remember";
+
+export interface DictEntry {
+  headword: string;
+  syllables: string | null;
+  pronunciation: string | null;
+  partOfSpeech: string | null;
+  senses: string[];
+  examples: string[];
+  /** False when the dictionary text had an unusual format (senses[0] is the raw start). */
+  parsed: boolean;
+}
+
+export interface DefineTermOut {
+  meaningSimple: string;
+  meaningB1: string;
+  partOfSpeech: string;
+  ipa: string | null;
+  syllables: string | null;
+  examples: string[];
+  collocations: string[];
+}
+
+export interface VocabItem {
+  id: number;
+  kind: VocabKind;
+  text: string;
+  textKey: string;
+  meaningSimple: string | null;
+  meaningB1: string | null;
+  partOfSpeech: string | null;
+  ipa: string | null;
+  syllables: string | null;
+  examples: string[];
+  collocations: string[];
+  notes: string | null;
+  status: VocabStatus;
+  dueAt: string | null;
+  lastReviewedAt: string | null;
+  lastGrade: Grade | null;
+  reviewCount: number;
+  rememberCount: number;
+  unsureCount: number;
+  forgotCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VocabContext {
+  id: number;
+  sentence: string | null;
+  articleId: number | null;
+  articleTitle: string | null;
+  articleUrl: string | null;
+  conversationId: number | null;
+  createdAt: string;
+}
+
+export interface VocabDetail {
+  item: VocabItem;
+  contexts: VocabContext[];
+  reviews: { grade: Grade; reviewedAt: string; dueAfter: string | null }[];
+}
+
+export interface NewVocabItem {
+  kind: VocabKind;
+  text: string;
+  meaningSimple?: string | null;
+  meaningB1?: string | null;
+  partOfSpeech?: string | null;
+  ipa?: string | null;
+  syllables?: string | null;
+  examples?: string[];
+  collocations?: string[];
+  notes?: string | null;
+  context?: { sentence?: string | null; articleId?: number | null; conversationId?: number | null };
+}
+
+export interface VocabPatch {
+  kind?: VocabKind;
+  text?: string;
+  meaningSimple?: string;
+  meaningB1?: string;
+  partOfSpeech?: string;
+  ipa?: string;
+  examples?: string[];
+  notes?: string;
+}
+
+export interface VocabFilter {
+  query?: string;
+  kind?: VocabKind;
+  status?: VocabStatus;
+  dueOnly?: boolean;
+  articleId?: number;
+  pendingOnly?: boolean;
+}
+
+export interface DueCount {
+  due: number;
+  new: number;
+  total: number;
+  /** Items with a meaning; a quiz needs at least 3. */
+  ready: number;
+}
+
+export interface QuizCard {
+  itemId: number;
+  kind: VocabKind;
+  text: string;
+  prompt: string;
+  original: string | null;
+  answer: { meaning: string; example: string | null; partOfSpeech: string | null; ipa: string | null; context: string | null };
+}
+
+export interface QuizResult {
+  sessionId: number;
+  finishedAt: string | null;
+  total: number;
+  remember: number;
+  unsure: number;
+  forgot: number;
+  score: number;
+  missed: VocabItem[];
 }
 
 export interface AiSettings {
@@ -358,6 +506,8 @@ export const api = {
   setActiveModel: (modelId: string) => call<void>("set_active_model", { modelId }),
   startAi: (force: boolean) => call<AiStatus>("start_ai", { force }),
   unloadAi: () => call<void>("unload_ai"),
+  getCachedDerivative: (articleId: number, kind: DerivKind) =>
+    call<string | null>("get_cached_derivative", { articleId, kind }),
   getDerivative: (
     articleId: number,
     kind: DerivKind,
@@ -394,6 +544,30 @@ export const api = {
   clearArticleChat: (articleId: number) => call<void>("clear_article_chat", { articleId }),
   cancelJob: (jobId: number) => call<void>("cancel_job", { jobId }),
 
+  dictionaryLookup: (term: string) => call<DictEntry | null>("dictionary_lookup", { term }),
+  defineTerm: (term: string, sentence: string | null, articleId: number | null, force = false) =>
+    call<DefineTermOut>("define_term", { term, sentence, articleId, force }),
+  addVocabItem: (item: NewVocabItem) =>
+    call<{ outcome: "created" | "merged"; item: VocabItem }>("add_vocab_item", { item }),
+  updateVocabItem: (id: number, patch: VocabPatch) => call<VocabItem>("update_vocab_item", { id, patch }),
+  deleteVocabItem: (id: number) => call<void>("delete_vocab_item", { id }),
+  listVocab: (filter: VocabFilter, cursor?: number | null, limit?: number) =>
+    call<{ items: VocabItem[]; nextCursor: number | null; total: number }>("list_vocab", {
+      filter,
+      cursor: cursor ?? null,
+      limit: limit ?? 100,
+    }),
+  getVocabItem: (id: number) => call<VocabDetail>("get_vocab_item", { id }),
+  listVocabKeys: () => call<string[]>("list_vocab_keys"),
+  dueCount: () => call<DueCount>("due_count"),
+  exportVocabCsv: () => call<{ path: string }>("export_vocab_csv"),
+  startQuiz: (size: number | null, itemIds: number[] | null = null) =>
+    call<{ sessionId: number; cards: QuizCard[] }>("start_quiz", { size, itemIds }),
+  gradeQuizItem: (sessionId: number, itemId: number, grade: Grade) =>
+    call<{ nextDueAt: string; status: VocabStatus }>("grade_quiz_item", { sessionId, itemId, grade }),
+  finishQuiz: (sessionId: number) => call<QuizResult>("finish_quiz", { sessionId }),
+  listQuizHistory: (limit = 5) => call<QuizResult[]>("list_quiz_history", { limit }),
+
   setWidgetStyle: (args: { style?: WidgetStyle; alwaysOnTop?: boolean }) =>
     call<WidgetSettings>("set_widget_style", { args }),
   showMain: (route?: string) => call<void>("show_main", { route: route ?? null }),
@@ -424,6 +598,7 @@ export const EVENTS = {
   needsBody: "article://needs-body",
   aiStatus: "ai://status",
   aiDownload: "ai://download",
+  vocabChanged: "vocab://changed",
 } as const;
 
 export function onEvent<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {

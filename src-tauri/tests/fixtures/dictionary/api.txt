@@ -1,0 +1,1 @@
+API | ˌā ˌpē ˈī | noun Computing a set of functions and procedures allowing the creation of applications that access the features or data of an operating system, application, or other service. ORIGIN 1980s: abbreviation of application programming interface.

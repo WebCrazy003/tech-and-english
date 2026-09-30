@@ -108,6 +108,7 @@ button.ghost:hover:not(:disabled) {
 }
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--accent);
@@ -119,6 +120,8 @@ input[type="url"],
 input[type="time"],
 input[type="number"],
 input[type="search"],
+input:not([type]),
+textarea,
 select {
   font: inherit;
   color: var(--text);
@@ -163,4 +166,11 @@ h3 {
 }
 .spacer {
   flex: 1;
+}
+
+/* P4: words already in the Word Book (CSS Custom Highlight API) */
+::highlight(known-vocab) {
+  text-decoration: underline dotted 1.5px;
+  text-decoration-color: var(--learn);
+  text-underline-offset: 3px;
 }

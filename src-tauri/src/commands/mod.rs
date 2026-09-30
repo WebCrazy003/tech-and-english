@@ -6,6 +6,7 @@ pub mod onboarding;
 pub mod reader;
 pub mod settings;
 pub mod shell;
+pub mod words;
 
 use crate::error::AppError;
 

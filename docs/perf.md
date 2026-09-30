@@ -59,3 +59,14 @@ Debug-build tests on the Mac mini M1 (network time dominates the live numbers).
 | "Find feed" per example URL (live, 13 URLs) | 1.1–10.4 s (median about 2 s) |
 
 Idle memory and CPU are unchanged in kind: P3 adds no background process, only one small query per minute (lesson check) and a few SQL rows per article.
+
+## P4 — words (2026-09-30)
+
+| What | Result | Budget |
+|---|---|---|
+| macOS dictionary lookup, first (cold) | 238 ms | ≤ 300 ms ✅ |
+| macOS dictionary lookup, warm (8 words) | 2 ms each | |
+| "Explain simply" on Qwen3.5 4B (model already loaded) | 11–15 s per term, valid JSON 8/8 | |
+| Release binary (all of P4, incl. the fsrs crate) | 10.9 → 11.3 MB (+0.4 MB) | fsrs ≤ 5 MB ✅ |
+| Build of fsrs and its new dependencies | 40 s | ≤ 60 s ✅ |
+| Background meaning fill | ≤ 10 items per minute; dictionary only unless the model is loaded | never loads the model ✅ |

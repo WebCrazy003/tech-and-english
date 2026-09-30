@@ -7,6 +7,11 @@ import { useApp } from "../../stores/app";
 import { useReader } from "../../stores/reader";
 import { toast, toastError } from "../../stores/toast";
 import { useSettingsPatch } from "../../pages/settings/useSettingsPatch";
+import { stop as stopSpeech } from "../../lib/tts";
+import { useSpeech } from "../../stores/words";
+import WordPopup from "../words/WordPopup";
+import { useKnownHighlights } from "../words/highlights";
+import { readSelection, type WordSelection } from "../words/selection";
 import AiPanel from "./AiPanel";
 import DerivativeView from "./DerivativeView";
 import styles from "./reader.module.css";
@@ -62,6 +67,10 @@ export default function Reader() {
   const settings = useApp((s) => s.settings);
   const patch = useSettingsPatch();
   const setQuote = useReader((s) => s.setQuote);
+  const setQuestion = useReader((s) => s.setQuestion);
+  const [word, setWord] = useState<WordSelection | null>(null);
+  const bodyRef = useRef<HTMLElement>(null);
+  const speech = useSpeech();
   const [article, setArticle] = useState<ReaderArticle | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("original");
@@ -74,6 +83,8 @@ export default function Reader() {
     setLoading(true);
     setTab("original");
     setChip(null);
+    setWord(null);
+    stopSpeech(); // a new story: stop reading the old one
     scrollRef.current?.scrollTo({ top: 0 });
     void api.recordInteraction(articleId, "opened").catch(() => {});
     ensureBody(articleId)
@@ -86,6 +97,8 @@ export default function Reader() {
   }, [articleId]);
 
   useReadTracking(article, scrollRef);
+  // Words already in the Word Book are underlined lightly (the Original tab).
+  useKnownHighlights(bodyRef, `${article?.id}-${article?.bodyStatus}-${tab}-${loading}`);
 
   // Links in the article open in the browser; selecting text offers "Ask AI about this".
   const onBodyClick = (e: MouseEvent) => {
@@ -98,6 +111,14 @@ export default function Reader() {
   const onMouseUp = () => {
     const sel = window.getSelection();
     const text = sel?.toString().trim() ?? "";
+    // 1–8 words: the word popup. Longer: "Ask AI about this".
+    const w = scrollRef.current ? readSelection(scrollRef.current) : null;
+    if (w && w !== "long") {
+      setChip(null);
+      setWord(w);
+      return;
+    }
+    setWord(null);
     if (!sel || !text || text.length > 1000 || sel.rangeCount === 0) {
       setChip(null);
       return;
@@ -115,6 +136,15 @@ export default function Reader() {
     if (!panelOpen) void patch({ readerAiPanelOpen: true });
   };
 
+  // Listen: the text of the open tab, else the cached B1 summary, else title + description.
+  const listen = async () => {
+    if (!article) return;
+    if (speech.speaking) return speech.stop();
+    const tabText = tab !== "original" ? document.querySelector(`[data-deriv="${tab}"]`)?.textContent : null;
+    const summary = tabText || (await api.getCachedDerivative(article.id, "summary_b1").catch(() => null));
+    void speech.read(summary || `${article.title}. ${article.description ?? ""}`);
+  };
+
   const a = article;
   const meta = a
     ? [a.sourceName, timeAgo(a.publishedAt ?? a.discoveredAt), a.difficulty && DIFFICULTY[a.difficulty], a.readingMinutes && `${a.readingMinutes} min read`]
@@ -124,7 +154,7 @@ export default function Reader() {
 
   return (
     <div className={styles.shell}>
-      <div className={styles.main} ref={scrollRef} onMouseUp={onMouseUp}>
+      <div className={styles.main} ref={scrollRef} onMouseUp={onMouseUp} onScroll={() => setWord(null)}>
         <div className={styles.column}>
           <div className={styles.topBar}>
             <button className="ghost" onClick={() => navigate(-1)} aria-label="Back">
@@ -133,6 +163,14 @@ export default function Reader() {
             <span className="spacer" />
             {a && (
               <>
+                <button
+                  className="ghost"
+                  onClick={() => void listen()}
+                  disabled={speech.disabled}
+                  title={speech.disabled ? "Switch to Standard" : "Listen to the summary (or the title and description)"}
+                >
+                  {speech.speaking ? "■ Stop" : "🔊 Listen"}
+                </button>
                 <button className="ghost" onClick={() => api.openExternal(a.url)} title="Open in browser">
                   Open in browser ↗
                 </button>
@@ -197,6 +235,7 @@ export default function Reader() {
                   <p className={styles.status}>Getting the article text…</p>
                 ) : a.bodyStatus === "ok" && a.bodyHtml ? (
                   <article
+                    ref={bodyRef}
                     className={styles.body}
                     onClick={onBodyClick}
                     // Sanitized by DOMPurify during extraction (only safe tags/attributes kept).
@@ -218,6 +257,18 @@ export default function Reader() {
                 ))}
               {tab !== "original" && <DerivativeView key={`${a.id}-${tab}`} articleId={a.id} kind={tab} />}
             </>
+          )}
+          {word && (
+            <WordPopup
+              sel={word}
+              articleId={a?.id ?? null}
+              onClose={() => setWord(null)}
+              onAskAi={(q) => {
+                setWord(null);
+                setQuestion(q);
+                if (!panelOpen) void patch({ readerAiPanelOpen: true });
+              }}
+            />
           )}
           {chip && (
             <button className={styles.askChip} style={{ left: chip.x, top: chip.y }} onMouseDown={(e) => e.preventDefault()} onClick={askAi}>

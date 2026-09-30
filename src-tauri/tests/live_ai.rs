@@ -130,6 +130,73 @@ async fn summary_and_chat_on_real_model() {
     manager.shutdown().await;
 }
 
+/// P4: "Explain simply" JSON on the real model.
+///   TE_MODEL=qwen3.5-4b cargo test --release --test live_ai define_term_on_real_model -- --ignored --nocapture
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn define_term_on_real_model() {
+    let db = Db::open_in_memory().unwrap();
+    let id = db
+        .call(|c| {
+            c.execute(
+                "INSERT INTO articles(url, normalized_url, title, title_key, source_name, discovered_at, body_text, body_status)
+                 VALUES ('https://duckdb.org/x','https://duckdb.org/x','DuckDB 2.0 brings a faster storage format','duckdb','DuckDB Blog','2026-09-29T00:00:00Z',?1,'ok')",
+                [ARTICLE],
+            )?;
+            Ok(c.last_insert_rowid())
+        })
+        .await
+        .unwrap();
+    let settings = SettingsStore::load(db.clone()).await.unwrap();
+    if let Ok(m) = std::env::var("TE_MODEL") {
+        settings
+            .update(serde_json::json!({ "ai": { "activeModel": m } }))
+            .await
+            .unwrap();
+    }
+    let events = Arc::new(RecordingEventSink::default());
+    let mode = ModeManager::load(db.clone(), events.clone()).await.unwrap();
+    let manager = AiManager::new(
+        db.clone(),
+        dirs_data(),
+        settings.clone(),
+        mode,
+        events.clone(),
+        Arc::new(RealLauncher),
+    );
+    let provider = Arc::new(LocalLlamaProvider::new(manager.clone()));
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let svc = AiService::new(db.clone(), clock, settings, events, provider.clone());
+    manager.ensure_ready(true).await.unwrap();
+    println!("model {}", provider.model_id());
+    for (term, sentence) in [
+        ("in-process", "DuckDB is an in-process analytical database."),
+        (
+            "compresses",
+            "The new storage format in version 2.0 compresses columns better.",
+        ),
+        (
+            "lakehouse",
+            "This means DuckDB can read data from a lakehouse directly.",
+        ),
+        (
+            "workloads",
+            "The authors say this makes DuckDB useful for small production workloads.",
+        ),
+    ] {
+        let t = Instant::now();
+        let o = svc.define_term(term, Some(sentence), Some(id), false).await.unwrap();
+        println!(
+            "\n[{term}] {:.1}s\n{}",
+            t.elapsed().as_secs_f64(),
+            serde_json::to_string_pretty(&o).unwrap()
+        );
+        assert!(o.examples.len() >= 2, "at least 2 examples");
+        assert!(!o.meaning_simple.is_empty());
+    }
+    manager.shutdown().await;
+}
+
 fn dirs_data() -> std::path::PathBuf {
     std::path::PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Application Support/com.techenglish.app")
 }

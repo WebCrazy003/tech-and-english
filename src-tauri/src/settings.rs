@@ -106,6 +106,55 @@ impl Default for AiSettings {
     }
 }
 
+/// Text-to-speech (P4). Voices come from macOS through the webview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TtsSettings {
+    /// `SpeechSynthesisVoice.voiceURI`; `None` = the best English voice found.
+    pub voice_uri: Option<String>,
+    /// Reading speed for Listen (0.5–1.2).
+    pub rate: f64,
+    /// Speed for single words in the popup and quizzes (0.5–1.2).
+    pub word_rate: f64,
+    pub volume: f64,
+    /// Pause between sentences.
+    pub pause_ms: u32,
+}
+
+impl Default for TtsSettings {
+    fn default() -> Self {
+        Self {
+            voice_uri: None,
+            rate: 0.85,
+            word_rate: 0.7,
+            volume: 1.0,
+            pause_ms: 400,
+        }
+    }
+}
+
+/// Practice (P4).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LearningSettings {
+    /// Items per quiz (5–30).
+    pub quiz_size: u32,
+    /// FSRS target recall (0.80–0.95).
+    pub desired_retention: f64,
+    /// Say the word when the answer is shown.
+    pub auto_pronounce: bool,
+}
+
+impl Default for LearningSettings {
+    fn default() -> Self {
+        Self {
+            quiz_size: 10,
+            desired_retention: 0.9,
+            auto_pronounce: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -130,6 +179,8 @@ pub struct Settings {
     pub ai: AiSettings,
     /// Reader: the AI panel on the right is open.
     pub reader_ai_panel_open: bool,
+    pub tts: TtsSettings,
+    pub learning: LearningSettings,
 }
 
 impl Default for Settings {
@@ -153,6 +204,8 @@ impl Default for Settings {
             show_dock_icon: false,
             ai: AiSettings::default(),
             reader_ai_panel_open: true,
+            tts: TtsSettings::default(),
+            learning: LearningSettings::default(),
         }
     }
 }
@@ -203,6 +256,18 @@ impl Settings {
         }
         if !(1..=3).contains(&self.ai.english_level) {
             return bad("English level must be 1, 2 or 3");
+        }
+        if !(0.5..=1.2).contains(&self.tts.rate) || !(0.5..=1.2).contains(&self.tts.word_rate) {
+            return bad("Speaking speed must be 0.5–1.2");
+        }
+        if !(0.0..=1.0).contains(&self.tts.volume) || self.tts.pause_ms > 2000 {
+            return bad("Volume must be 0–1 and the pause at most 2 seconds");
+        }
+        if !(5..=30).contains(&self.learning.quiz_size) {
+            return bad("Quiz size must be 5–30");
+        }
+        if !(0.8..=0.95).contains(&self.learning.desired_retention) {
+            return bad("Target recall must be 80–95 %");
         }
         if self.notify_max_per_day > 5 {
             return bad("At most 5 high-interest notifications per day");
@@ -321,6 +386,17 @@ mod tests {
     fn rejects_out_of_range_interval() {
         assert!(apply_patch(&Settings::default(), &json!({"fetchIntervalStandardMin": 5})).is_err());
         assert!(apply_patch(&Settings::default(), &json!({"fetchIntervalHibernateMin": 61})).is_err());
+    }
+
+    #[test]
+    fn p4_ranges() {
+        let d = Settings::default();
+        assert_eq!((d.learning.quiz_size, d.tts.rate), (10, 0.85));
+        assert!(apply_patch(&d, &json!({"learning": {"quizSize": 31}})).is_err());
+        assert!(apply_patch(&d, &json!({"learning": {"desiredRetention": 0.97}})).is_err());
+        assert!(apply_patch(&d, &json!({"tts": {"rate": 0.4}})).is_err());
+        let s = apply_patch(&d, &json!({"tts": {"voiceUri": "com.apple.voice.premium.en-US.Zoe"}})).unwrap();
+        assert_eq!(s.tts.rate, 0.85, "untouched nested field kept");
     }
 
     #[test]

@@ -7,6 +7,7 @@ use crate::ai::service::AiService;
 use crate::clock::Clock;
 use crate::db::Db;
 use crate::events::EventSink;
+use crate::learning::vocab::VocabService;
 use crate::mode::ModeManager;
 use crate::news::NewsService;
 use crate::news::pick::PickService;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub notify: Arc<NotifyService>,
     pub ai_manager: Arc<AiManager>,
     pub ai_service: Arc<AiService>,
+    pub vocab: Arc<VocabService>,
     pub downloader: Arc<Downloader>,
     /// Set by the tray Quit item; any other exit request is prevented.
     pub quitting: AtomicBool,

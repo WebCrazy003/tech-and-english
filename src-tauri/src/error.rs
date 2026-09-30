@@ -59,6 +59,12 @@ impl From<serde_json::Error> for AppError {
     }
 }
 
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        AppError::Internal(format!("io: {e}"))
+    }
+}
+
 impl From<tokio::task::JoinError> for AppError {
     fn from(e: tokio::task::JoinError) -> Self {
         AppError::Internal(format!("task: {e}"))

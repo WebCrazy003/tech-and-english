@@ -2,7 +2,7 @@
 
 - **Version:** 0.3 (implementation spec)
 - **Date:** 2026-09-29
-- **Status:** P1 (v0.1.0), P2 (v0.2.0) and P3 (v0.3.0) done. v0.3 adds learning materials, example sources, AI chat in the reader, dictionary meanings, and a new phase order.
+- **Status:** P1 (v0.1.0), P2 (v0.2.0), P3 (v0.3.0) and P4 (v0.4.0) done. v0.3 adds learning materials, example sources, AI chat in the reader, dictionary meanings, and a new phase order.
 - **Dev specs:** [dev/README.md](dev/README.md) (per-phase implementation plans P1–P6)
 - **Based on:** the original product spec (v0.1), plus the review changes listed in §3
 
@@ -631,6 +631,7 @@ The Reader has two columns: the article on the left, and an **AI panel on the ri
 Selecting 1–8 words in the Reader, or in an AI answer, shows a popup:
 
 - **Dictionary meaning** from the **macOS built-in dictionary** (Dictionary Services `DCSCopyTextDefinition`, offline). It shows the headword, the pronunciation as written in the dictionary (IPA), the part of speech, and the first 1–2 senses, trimmed. If the dictionary has no entry, it says "Not in the dictionary".
+  - For a phrase, Dictionary Services returns the **first word's** entry ("rule of thumb" → "rule"). The app then looks for the phrase in that entry's PHRASES section, and says "Not in the dictionary" if it is not there.
 - 🔊 **Listen**: TTS of the word at a slow rate (§12 voices; default rate 0.7).
 - **Explain simply (AI)**: LLM task `define_term`, using the sentence as context. It gives a simple meaning, a B1 meaning, 2–3 examples (one about the article), collocations, and syllables with the stress marked as a hint.
 - **Add to Word Book**: saves the dictionary meaning (or the AI meaning, if it was requested), the pronunciation, and the sentence as context.
@@ -658,7 +659,7 @@ See `vocab_items` in §13. Saved context (the sentence, plus the article or conv
 
 - Items are deduplicated by `(kind, text_key)`, where `text_key` = lowercase, trimmed, with collapsed whitespace. Adding an existing item adds a new context. If the item's status is `known`, it goes back to `learning`.
 - Items with no meaning are allowed. They appear as "Meaning pending" and are **skipped by quizzes** until they have a meaning.
-- **The AI** (from P2 on) auto-fills pending meanings in the background, in Standard Mode, when the LLM is loaded anyway.
+- **Pending meanings are filled in the background** in Standard Mode: first from the macOS dictionary (offline, any time), then by the AI, but only when the LLM is loaded anyway.
 
 ### 9.4 Word Book page
 

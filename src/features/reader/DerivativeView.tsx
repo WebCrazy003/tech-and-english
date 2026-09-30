@@ -24,7 +24,7 @@ export default function DerivativeView({ articleId, kind }: { articleId: number;
         <p className={styles.status}>Reading the article… (up to 15 seconds for a long article)</p>
       )}
       {state.text && (
-        <div className={`${styles.body} ${busy ? styles.typing : ""}`}>
+        <div className={`${styles.body} ${busy ? styles.typing : ""}`} data-deriv={kind}>
           <RichText text={state.text} />
         </div>
       )}

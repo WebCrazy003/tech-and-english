@@ -1,0 +1,1 @@
+idempotent i·dem·po·tent | ˌīdemˈpōtnt, ˌēdemˈpōtnt | Mathematics adjective denoting an element of a set which is unchanged in value when multiplied or otherwise operated on by itself. noun an idempotent element. ORIGIN late 19th century: from Latin idem ‘same’ + potent1.

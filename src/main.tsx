@@ -14,6 +14,11 @@ import Feeds from "./pages/settings/Feeds";
 import Notifications from "./pages/settings/Notifications";
 import Ai from "./pages/settings/Ai";
 import Reader from "./features/reader/Reader";
+import { LearningSettings, VoiceSettings } from "./pages/settings/Voice";
+import WordBook from "./pages/words/WordBook";
+import WordDetail from "./pages/words/WordDetail";
+import { PracticeResult, PracticeSession, PracticeStart } from "./pages/words/Practice";
+import { startWordsStore } from "./stores/words";
 import { startAiStore } from "./stores/ai";
 import { api, EVENTS, onEvent } from "./lib/api";
 import { startAppStore } from "./stores/app";
@@ -28,6 +33,11 @@ const router = createHashRouter([
       { path: "today", element: <Today /> },
       { path: "explore", element: <Explore /> },
       { path: "reader/:id", element: <Reader /> },
+      { path: "wordbook", element: <WordBook /> },
+      { path: "wordbook/:id", element: <WordDetail /> },
+      { path: "practice", element: <PracticeStart /> },
+      { path: "practice/session", element: <PracticeSession /> },
+      { path: "practice/result", element: <PracticeResult /> },
       {
         path: "settings",
         element: <SettingsLayout />,
@@ -38,6 +48,8 @@ const router = createHashRouter([
           { path: "feeds", element: <Feeds /> },
           { path: "notifications", element: <Notifications /> },
           { path: "ai", element: <Ai /> },
+          { path: "voice", element: <VoiceSettings /> },
+          { path: "learning", element: <LearningSettings /> },
         ],
       },
     ],
@@ -46,6 +58,7 @@ const router = createHashRouter([
 
 startAppStore();
 startAiStore();
+startWordsStore();
 
 // The backend asks the main window to show a route (tray menu, widget buttons).
 void onEvent<{ route: string }>(EVENTS.navigate, ({ route }) => {

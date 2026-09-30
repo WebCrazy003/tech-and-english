@@ -4,6 +4,7 @@ import { shortAge, timeAgo } from "../../lib/format";
 import { useApp } from "../../stores/app";
 import { AiDot } from "../../features/ai/AiSetup";
 import { toastError } from "../../stores/toast";
+import { useWords } from "../../stores/words";
 import styles from "./Widget.module.css";
 
 /** Close a popover when the user clicks outside it or presses Escape. */
@@ -188,6 +189,7 @@ function Body({ view }: { view: View }) {
 
 function Footer() {
   const newsVersion = useApp((s) => s.newsVersion);
+  const due = useWords((s) => s.due);
   const [status, setStatus] = useState<string>("");
   useEffect(() => {
     api
@@ -199,7 +201,21 @@ function Footer() {
       })
       .catch(() => setStatus(""));
   }, [newsVersion]);
-  return <footer className={styles.footer}>{status}</footer>;
+  const words = due && due.total > 0 ? `📚 ${due.due} due · ${due.new} new` : null;
+  return (
+    <footer className={styles.footer}>
+      <span className={styles.footerText}>{status}</span>
+      {words && (
+        <button
+          className={styles.practice}
+          onClick={() => api.showMain("/practice").catch(toastError)}
+          title="Practise your Word Book"
+        >
+          {words} · Practice
+        </button>
+      )}
+    </footer>
+  );
 }
 
 export default function Widget() {

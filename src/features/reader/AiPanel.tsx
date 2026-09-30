@@ -4,6 +4,8 @@ import RichText from "../../components/RichText";
 import { useReader } from "../../stores/reader";
 import { toastError } from "../../stores/toast";
 import { AiDot, AiProblem } from "../ai/AiSetup";
+import WordPopup from "../words/WordPopup";
+import { readSelection, type WordSelection } from "../words/selection";
 import { useAiStream } from "./useAiStream";
 import styles from "./reader.module.css";
 
@@ -23,6 +25,9 @@ export default function AiPanel({ articleId, onClose }: { articleId: number; onC
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const quote = useReader((s) => s.quote);
   const setQuote = useReader((s) => s.setQuote);
+  const question = useReader((s) => s.question);
+  const setQuestion = useReader((s) => s.setQuestion);
+  const [word, setWord] = useState<WordSelection | null>(null);
 
   const reload = useCallback(() => api.listArticleChat(articleId).then(setMessages).catch(toastError), [articleId]);
 
@@ -64,6 +69,21 @@ export default function AiPanel({ articleId, onClose }: { articleId: number; onC
       // The saved answer replaces the streaming bubble (errors stay visible).
       (final) => void reload().then(() => !final.error && reset()),
     );
+  };
+
+  // The word popup's "Ask AI" sends its question at once.
+  useEffect(() => {
+    if (!question || busy) return;
+    setQuestion(null);
+    send({ text: question });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [question, busy]);
+
+  // Selecting a word in an AI answer opens the word popup there too.
+  const onMessagesMouseUp = () => {
+    const el = listRef.current;
+    const s = el ? readSelection(el) : null;
+    setWord(s && s !== "long" ? s : null);
   };
 
   const submit = () => {
@@ -110,7 +130,7 @@ export default function AiPanel({ articleId, onClose }: { articleId: number; onC
         ))}
       </div>
 
-      <div className={styles.messages} ref={listRef}>
+      <div className={styles.messages} ref={listRef} onMouseUp={onMessagesMouseUp} onScroll={() => setWord(null)}>
         {messages.length === 0 && !busy && !state.error && (
           <p className={styles.hint}>Ask anything about this story. You can also select text in the article and press “Ask AI about this”.</p>
         )}
@@ -138,6 +158,18 @@ export default function AiPanel({ articleId, onClose }: { articleId: number; onC
           />
         )}
       </div>
+
+      {word && (
+        <WordPopup
+          sel={word}
+          articleId={articleId}
+          onClose={() => setWord(null)}
+          onAskAi={(q) => {
+            setWord(null);
+            send({ text: q });
+          }}
+        />
+      )}
 
       <div className={styles.inputRow}>
         <textarea

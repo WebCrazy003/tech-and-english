@@ -89,6 +89,63 @@ fn load_article(conn: &Connection, id: i64) -> AppResult<Loaded> {
     })
 }
 
+/// "Explain simply" output. The model writes snake_case JSON; the UI gets camelCase.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, Serialize)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
+pub struct DefineTermOut {
+    pub meaning_simple: String,
+    #[serde(default)]
+    pub meaning_b1: String,
+    #[serde(default)]
+    pub part_of_speech: String,
+    #[serde(default)]
+    pub ipa: Option<String>,
+    #[serde(default)]
+    pub syllables: Option<String>,
+    #[serde(default)]
+    pub examples: Vec<String>,
+    #[serde(default)]
+    pub collocations: Vec<String>,
+}
+
+fn trim_to(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max).collect::<String>().trim_end())
+    }
+}
+
+/// Read the model's JSON (tolerating code fences or text around it) and enforce the limits.
+pub fn parse_define_term(text: &str) -> AppResult<DefineTermOut> {
+    let bad = || AppError::ai("ai_error", "The AI answer could not be read. Please try again.");
+    let (start, end) = (text.find('{').ok_or_else(bad)?, text.rfind('}').ok_or_else(bad)?);
+    let mut o: DefineTermOut = serde_json::from_str(text.get(start..=end).ok_or_else(bad)?).map_err(|_| bad())?;
+    if o.meaning_simple.trim().is_empty() {
+        return Err(bad());
+    }
+    o.meaning_simple = trim_to(&o.meaning_simple, 160);
+    o.meaning_b1 = trim_to(&o.meaning_b1, 240);
+    o.ipa = o.ipa.map(|x| trim_to(&x, 60)).filter(|x| !x.is_empty());
+    o.syllables = o.syllables.map(|x| trim_to(&x, 60)).filter(|x| !x.is_empty());
+    o.examples = o
+        .examples
+        .iter()
+        .map(|e| trim_to(e, 160))
+        .filter(|e| !e.is_empty())
+        .take(3)
+        .collect();
+    o.collocations = o
+        .collocations
+        .iter()
+        .map(|c| trim_to(c, 40))
+        .filter(|c| !c.is_empty())
+        .take(4)
+        .collect();
+    Ok(o)
+}
+
 pub struct AiService {
     db: Db,
     clock: Arc<dyn Clock>,
@@ -99,6 +156,8 @@ pub struct AiService {
     interactive_waiting: AtomicUsize,
     jobs: Mutex<HashMap<u64, CancellationToken>>,
     next_job: AtomicU64,
+    /// "Explain simply" answers for this session, keyed by (term key, sentence).
+    term_cache: Mutex<HashMap<(String, String), DefineTermOut>>,
 }
 
 impl AiService {
@@ -119,6 +178,7 @@ impl AiService {
             interactive_waiting: AtomicUsize::new(0),
             jobs: Mutex::new(HashMap::new()),
             next_job: AtomicU64::new(1),
+            term_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -172,6 +232,74 @@ impl AiService {
             }
         }
         Ok((text, false))
+    }
+
+    /// One full (non-streamed) answer with interactive priority. May start the model.
+    async fn complete_interactive(&self, req: LlmRequest, force: bool) -> AppResult<String> {
+        self.interactive_waiting.fetch_add(1, Ordering::SeqCst);
+        let permit = self.llm.acquire().await;
+        self.interactive_waiting.fetch_sub(1, Ordering::SeqCst);
+        let _permit = permit.map_err(|_| AppError::Internal("AI queue closed".into()))?;
+        let mut stream = self.provider.stream(req, force).await?;
+        let mut text = String::new();
+        while let Some(chunk) = stream.next().await {
+            text.push_str(&chunk?);
+        }
+        Ok(text)
+    }
+
+    fn term_request(&self, term: &str, sentence: &str, title: &str) -> LlmRequest {
+        let mut req = LlmRequest::new(prompts::define_term(self.level(), term, sentence, title), 400);
+        req.temperature = 0.3;
+        req.json_schema = Some(prompts::define_term_schema());
+        req
+    }
+
+    /// "Explain simply" for a selected term (P4 dev spec §3.2). Cached for the session.
+    pub async fn define_term(
+        &self,
+        term: &str,
+        sentence: Option<&str>,
+        article_id: Option<i64>,
+        force: bool,
+    ) -> AppResult<DefineTermOut> {
+        let term = term.trim();
+        if term.is_empty() || term.chars().count() > 80 {
+            return Err(AppError::Invalid("Select 1–8 words first".into()));
+        }
+        let sentence = sentence.unwrap_or("").trim().to_string();
+        let key = (crate::learning::vocab::text_key(term), sentence.clone());
+        if let Some(hit) = self.term_cache.lock().unwrap().get(&key) {
+            return Ok(hit.clone());
+        }
+        let title = match article_id {
+            Some(id) => self.db.call(move |c| Ok(articles::get_item(c, id)?.title)).await?,
+            None => String::new(),
+        };
+        let text = self
+            .complete_interactive(self.term_request(term, &sentence, &title), force)
+            .await?;
+        let out = parse_define_term(&text)?;
+        self.term_cache.lock().unwrap().insert(key, out.clone());
+        Ok(out)
+    }
+
+    /// The same, for the background auto-fill: only when the model is already loaded and nothing
+    /// else is running. `Ok(None)` = not now (never starts the model).
+    pub async fn define_term_background(
+        &self,
+        term: &str,
+        sentence: &str,
+        title: &str,
+    ) -> AppResult<Option<DefineTermOut>> {
+        if !self.provider.is_ready() || self.interactive_waiting.load(Ordering::SeqCst) > 0 {
+            return Ok(None);
+        }
+        let Ok(_permit) = self.llm.try_acquire() else {
+            return Ok(None);
+        };
+        let text = self.provider.complete(self.term_request(term, sentence, title)).await?;
+        parse_define_term(&text).map(Some)
     }
 
     fn level(&self) -> u8 {
@@ -570,6 +698,68 @@ mod tests {
         let t = setup(&[]).await;
         assert!(t.svc.add_user_message(t.article, "  ".into()).await.is_err());
         assert!(t.svc.add_user_message(t.article, "x".repeat(2001)).await.is_err());
+    }
+
+    const TERM_JSON: &str = r#"Sure! ```json
+{"meaning_simple":"using a trained model to get answers","meaning_b1":"Inference is when a trained AI model makes predictions.","part_of_speech":"noun","ipa":"ˈɪnfərəns","syllables":"IN·fer·ence","examples":["The laptop runs inference offline.","Inference costs money.","x"],"collocations":["run inference","inference speed"]}
+```"#;
+
+    #[test]
+    fn define_term_json_is_read_and_limited() {
+        let o = parse_define_term(TERM_JSON).unwrap();
+        assert_eq!(o.part_of_speech, "noun");
+        assert_eq!(o.examples.len(), 3);
+        assert_eq!(o.syllables.as_deref(), Some("IN·fer·ence"));
+        let long = format!(r#"{{"meaning_simple":"{}","examples":[]}}"#, "a".repeat(300));
+        assert_eq!(parse_define_term(&long).unwrap().meaning_simple.chars().count(), 161);
+        assert!(parse_define_term("no json here").is_err());
+        assert!(parse_define_term(r#"{"meaning_simple":" "}"#).is_err());
+        let v = serde_json::to_value(&o).unwrap();
+        assert!(v.get("meaningSimple").is_some(), "camelCase for the UI");
+    }
+
+    #[tokio::test]
+    async fn define_term_uses_a_schema_and_a_cache() {
+        let t = setup(&[&[TERM_JSON]]).await;
+        let a = t.article;
+        let o = t
+            .svc
+            .define_term("Inference", Some("It runs inference."), Some(a), false)
+            .await
+            .unwrap();
+        assert_eq!(o.meaning_simple, "using a trained model to get answers");
+        let req = t.mock.requests.lock().unwrap()[0].clone();
+        assert!(req.json_schema.is_some());
+        assert!(req.messages[1].content.contains("Article title: Kafka 5"));
+        let again = t
+            .svc
+            .define_term("inference", Some("It runs inference."), Some(a), false)
+            .await
+            .unwrap();
+        assert_eq!(again, o);
+        assert_eq!(t.mock.calls(), 1, "second call from the cache");
+    }
+
+    #[tokio::test]
+    async fn background_define_never_starts_the_model() {
+        let t = setup(&[&[TERM_JSON]]).await;
+        t.mock.ready.store(false, Ordering::SeqCst);
+        assert!(
+            t.svc
+                .define_term_background("inference", "", "")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(t.mock.calls(), 0);
+        t.mock.ready.store(true, Ordering::SeqCst);
+        assert!(
+            t.svc
+                .define_term_background("inference", "", "")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]

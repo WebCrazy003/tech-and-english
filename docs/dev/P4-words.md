@@ -6,6 +6,7 @@
   - **Explain simply (AI)**: uses the local model from P2
 - **SPEC sections:** §8.5, §9, §10, §13 (P4), §14 (P4), §18 P4.
 - **Branch:** `p4/words` → tag `v0.4.0`
+- **Status:** ✅ done 2026-09-30. QA: [../qa/P4.md](../qa/P4.md). Changes found while building are marked **(changed)**.
 - **Built from:** the Word Book / quiz half of the old P2 spec, plus `define_term` and meaning auto-fill from the old P3 spec (SPEC C16, C17).
 
 ## 0. Scope
@@ -31,6 +32,8 @@
 | System | `CoreServices.framework` (linked; ships with macOS) |
 
 > **fsrs crate risk.** At T5 start, check the clean build time and binary size. If the crate adds more than 60 s or 5 MB, port **only** the FSRS-6 `next_states` scheduling formulas with default parameters into `learning/srs.rs`, and test them against values precomputed with the crate.
+>
+> **Result (2026-09-30):** fsrs 6.6.2 no longer depends on `burn` (only ndarray, rayon, rand…). Building it and its new dependencies took 40 s; the release binary grew by 0.4 MB for all of P4. The crate is kept.
 
 ---
 
@@ -62,13 +65,17 @@ pub fn parse(raw: &str) -> DictEntry                    // pure, unit-tested
 ```
 
 - Dictionary Services uses the user's default dictionary (on this Mac: New Oxford American Dictionary). It finds inflected forms too ("inferences" → inference).
-- **Parsing** the plain-text format `headword | pronunciation | part of speech 1 sense … 2 sense …`:
+- **The real format (changed)** on macOS 14.7 with the New Oxford American Dictionary is
+  `headword syl·la·bles | pronunciation | [labels] part-of-speech [1] sense: example | example. • sub-sense … 2 …`.
+  So `DictEntry` also has `syllables`, `examples` (from the text after `:`) and `parsed` (false = unusual format, `senses[0]` holds the raw start). Subject labels become a prefix: "(Computing) the delay before…". A second part of speech ("… noun an idempotent element") is not mixed into the first.
+- **Phrases (changed):** Dictionary Services returns the first word's entry for a phrase ("on the fly" → "fly"). `entry_for(term, raw)` accepts the entry only when the headword matches (ignoring spaces and hyphens: "trade off" = "trade-off"); otherwise it looks for the phrase in the PHRASES section (with its own pronunciation) and returns part of speech `phrase`, or nothing.
+- **Parsing** the plain-text format (as first planned) `headword | pronunciation | part of speech 1 sense … 2 sense …`:
   1. Split the first two ` | ` separators to get the headword and the pronunciation.
   2. The part of speech is the first word(s) of the rest (`noun`, `verb`, `adjective`, `adverb`, `phrasal verb`, …).
   3. The senses are split on ` N ` numbered markers. Keep at most 2, each cut to 200 chars at a sentence end.
   4. Drop the `PHRASES` / `DERIVATIVES` / `ORIGIN` sections.
   5. If the format is unusual, keep `raw`, cut to 300 chars, as the only sense.
-- **Tests:** parse 6 saved outputs in `tests/fixtures/dictionary/*.txt`: a word, a phrase, a verb with several senses, a word with no pronunciation, a non-English result, and an unknown format. Also an ignored live test that calls `lookup("inference")`.
+- **Tests:** parse saved outputs in `tests/fixtures/dictionary/*.txt`: 8 real ones (inference, latency, run, trade-off, API, rule of thumb, pipeline, idempotent) and 3 made-up ones (no pronunciation, non-English, unknown format). Also an ignored live test that calls `lookup("inferences")` (238 ms cold, 2 ms warm).
 - Command: `dictionary_lookup { term }` → `DictEntry | null`. It works in **both modes** (Hibernate too), because it is cheap and needs no AI.
 
 ### 3.2 `define_term.md` (JSON, AI)
@@ -107,14 +114,15 @@ Schema, mirrored by the Rust struct `DefineTermOut`:
 
 - At least one example must relate to the article's topic; the prompt says so.
 - `ipa` and `syllables` are shown with the label **"hint"** (SPEC §12.6).
+- **(changed)** The prompt's collocation example is about another word ("decision"): with "run inference" as the example, the model copied it into unrelated words. Live on Qwen3.5 4B: 11–15 s per term, valid JSON every time (`live_ai::define_term_on_real_model`). The model does not give IPA; the dictionary does.
 
 - Used by **Explain simply** in the popup. Results are cached in memory for the session, keyed by `(term_key, sentence)`.
 
 ### 3.3 Auto-fill of missing meanings (background job)
 
-When the model is `Ready` and idle ≥ 5 s, take up to 10 Word Book items with no meaning (oldest first):
-- If the dictionary has an entry, fill `meaning_simple` from its first sense and `ipa` from its pronunciation.
-- Otherwise, run `define_term` with the item's latest context.
+Every scheduler tick (60 s), in Standard Mode, take up to 10 Word Book items with no meaning (oldest first; only word, phrase, term and pronunciation kinds):
+- If the dictionary has an entry, fill `meaning_simple` from its first sense, `ipa`, part of speech, syllables and examples. **(changed:** this needs no model, so it runs even when the AI is not loaded.)
+- Otherwise, when the model is `Ready` and nothing else is running, run `define_term` with the item's latest context.
 
 Only empty fields are filled. Then emit `vocab://changed`. This never triggers a model load.
 
@@ -179,7 +187,9 @@ export function stop(): void
   > Better voices: System Settings › Accessibility › Spoken Content › System Voice › Manage Voices… (download an English "Premium" voice).
 - **Listen:** speaks the cached B1 summary if there is one (P2), otherwise `title. description`, with `speakSentences`. The button toggles to **Stop** while speaking.
 - In Hibernate, TTS is disabled (SPEC §6) and the buttons show the tooltip "Switch to Standard".
-- `Settings` gains `tts: { voiceUri: Option<String>, rate: f32 (0.85), volume: f32 (1.0), pauseMs: u32 (400) }`.
+- `Settings` gains `tts: { voiceUri: Option<String>, rate: f32 (0.85), wordRate (0.7, changed: the popup and quizzes speak single words slower), volume: f32 (1.0), pauseMs: u32 (400) }` and `learning: { quizSize (10), desiredRetention (0.9), autoPronounce (true) }`.
+- **(changed)** WKWebView (checked with a Swift probe) has `speechSynthesis` with 187 voices, `Intl.Segmenter` and the CSS Highlight API. Voice IDs look like `com.apple.voice.enhanced.en-US.Ava`, so "Premium"/"Enhanced" is searched in the ID too, and the robotic `eloquence` voices and the macOS novelty voices ("Bubbles", "Bad News", …) are not offered.
+- **Listen (changed):** reads the open B1/Easy tab, else the cached B1 summary (new command `get_cached_derivative`, which never starts the AI), else title + description.
 
 ---
 
@@ -215,7 +225,7 @@ Other rules:
 | `list_vocab` | `{ filter: { query?, kind?, status?, dueOnly?, articleId?, pendingOnly? }, cursor?, limit? }` | `Page<VocabListItem>` |
 | `get_vocab_item` | `{ id }` | `VocabItemDetail` (item + contexts with article titles + last 20 reviews) |
 | `list_vocab_keys` | – | `string[]` (for highlights) |
-| `due_count` | – | `{ due: number, new: number }` |
+| `due_count` | – | `{ due, new, total, ready }` (changed: `total` hides the widget line for an empty Word Book; `ready` = items with a meaning, for "at least 3") |
 | `export_vocab_csv` | – | `{ path }` (writes to `~/Downloads/tech-english-wordbook-YYYY-MM-DD.csv`, then reveals it in Finder with `opener`) |
 
 - The CSV columns are: kind, text, meaning_simple, meaning_b1, part_of_speech, examples (joined with ` | `), status, review_count, due_at, first_context, source_article_url.
@@ -277,7 +287,7 @@ if pool.len() < 3 → Err(Invalid("need at least 3 words with a meaning"))
 | `finish_quiz` | `{ sessionId }` | `QuizResult { total, remember, unsure, forgot, score, missed: VocabListItem[] }` |
 | `list_quiz_history` | `{ limit }` | `QuizResult[]` (for a small chart on the Practice page) |
 
-- `QuizCard = { itemId, kind, prompt, answer: { meaning, example?, partOfSpeech?, context? } }`
+- `QuizCard = { itemId, kind, text, prompt, original?, answer: { meaning, example?, partOfSpeech?, ipa?, context? } }` (changed: `text` for 🔊, `original` for sentence/correction cards)
   - For `sentence` and `correction` kinds: `prompt` = "How would you say this correctly?" plus the original sentence (from `notes`).
   - For other kinds: `prompt` = `text`.
 - `score = (remember + 0.5 × unsure) / graded`.
@@ -298,7 +308,8 @@ if pool.len() < 3 → Err(Invalid("need at least 3 words with a meaning"))
 | `/practice` | Start screen: due/new counts, size selector, last 5 scores, **[Start]** (disabled with a reason if < 3 items) |
 | `/practice/session` | The card flow from SPEC §10.3. Keys: Space = show answer; 1/2/3 = Forgot/Not Sure/Remember; Esc = quit (confirm). 🔊 auto-plays when the answer is shown if "Auto-pronounce" is on (setting, default on). Progress bar. |
 | `/practice/result` | Score (big), counts, missed items (click to open), [Practice missed again] (starts a quiz with those items only — `start_quiz { itemIds }`), [Done] |
-| Widget footer | `📚 12 due · 3 new  [Practice]` → opens `/practice`. It is hidden if the Word Book is empty. Updated on `vocab://changed` and after quizzes. |
+| Widget footer | `📚 12 due · 3 new · Practice` → opens `/practice`, to the right of the news status. It is hidden if the Word Book is empty. Updated on `vocab://changed` and after quizzes. |
+| Sidebar | Word Book (⌘3) and Practice (⌘4); Settings moved to ⌘5 |
 | Settings › Voice | §5 |
 | Settings › Learning | quiz size, desired retention, auto-pronounce |
 

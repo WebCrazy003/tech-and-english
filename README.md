@@ -4,7 +4,7 @@ A local-first macOS menu-bar app. It picks one interesting tech story a day for 
 
 - Product spec: [docs/SPEC.md](docs/SPEC.md)
 - Development plan per phase: [docs/dev/](docs/dev/README.md)
-- Current phase: **P4 — Words** (P1–P3 done: v0.1.0 news, v0.2.0 reader + AI chat, v0.3.0 learning & sources)
+- Current phase: **P5 — Voice tutor** (P1–P4 done: v0.1.0 news, v0.2.0 reader + AI chat, v0.3.0 learning & sources, v0.4.0 words)
 
 ## Requirements
 
@@ -42,6 +42,12 @@ The model starts when you first use the AI and unloads after 10 idle minutes or 
 
 - **Today's lesson.** Turn on **Learn** for a topic (Settings › Topics). Each day the app then also picks a tutorial or explainer for that topic, next to the news story.
 - **Add from an example.** Settings › News sources: paste an article you like. The app finds that site's feed, and can save the article so you can read it right away.
+
+## Words and practice
+
+- **Select a word** (1–8 words) in a story or an AI answer: the popup shows the macOS dictionary meaning, 🔊, **Explain simply** (AI) and **Add to Word Book**. Saved words are underlined lightly in stories.
+- **Word Book** (⌘3): search, edit, export to CSV (saved in Downloads). **Practice** (⌘4): a 10-word quiz; Space shows the answer, 1 / 2 / 3 grade it. Words come back on a spaced-repetition schedule (FSRS).
+- Better voices: System Settings › Accessibility › Spoken Content › System Voice › Manage Voices… then choose one in Settings › Voice.
 
 ## Check and test
 

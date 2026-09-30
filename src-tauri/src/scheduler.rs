@@ -20,6 +20,8 @@ pub struct Scheduler {
     pub notify: Arc<NotifyService>,
     /// P2: AI "why" text for the pick, only while the model is already loaded.
     pub ai: Option<Arc<crate::ai::service::AiService>>,
+    /// P4: fills missing Word Book meanings (dictionary, or the AI when it is loaded anyway).
+    pub vocab: Option<Arc<crate::learning::vocab::VocabService>>,
 }
 
 impl Scheduler {
@@ -37,6 +39,11 @@ impl Scheduler {
             && let Err(e) = ai.background_why(self.clock.today_local().to_string()).await
         {
             tracing::debug!(error = %e, "AI why skipped");
+        }
+        if let Some(vocab) = &self.vocab
+            && let Err(e) = crate::learning::autofill::run(vocab, self.ai.as_deref()).await
+        {
+            tracing::debug!(error = %e, "meaning auto-fill skipped");
         }
         if let Err(e) = self.daily_jobs().await {
             tracing::warn!(error = %e, "daily jobs failed");

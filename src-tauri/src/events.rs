@@ -13,6 +13,7 @@ pub const ARTICLE_BODY: &str = "article://body";
 pub const NEEDS_BODY: &str = "article://needs-body";
 pub const AI_STATUS: &str = "ai://status";
 pub const AI_DOWNLOAD: &str = "ai://download";
+pub const VOCAB_CHANGED: &str = "vocab://changed";
 
 pub trait EventSink: Send + Sync {
     fn emit_value(&self, event: &str, payload: Value);

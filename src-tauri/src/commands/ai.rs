@@ -143,6 +143,21 @@ pub struct JobStarted {
     pub job_id: u64,
 }
 
+/// A cached B1 summary / Easy English text, without generating one (the Listen button, P4).
+#[tauri::command]
+pub async fn get_cached_derivative(
+    state: State<'_, AppState>,
+    article_id: i64,
+    kind: DerivKind,
+) -> CmdResult<Option<String>> {
+    let k = kind.as_str();
+    Ok(state
+        .db
+        .call(move |c| ai_repo::get_derivative(c, article_id, k))
+        .await?
+        .map(|d| d.text))
+}
+
 #[tauri::command]
 pub async fn get_derivative(
     state: State<'_, AppState>,

@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use super::provider::ChatMsg;
 
 pub const PROMPT_VERSION: &str = "1";
+// "Explain simply" answers are only cached in memory, so changing that prompt needs no version bump.
 
 /// Article text per request, measured in chars (≈ 1,800 tokens: about 9 s of prompt reading on an M1).
 pub const ARTICLE_BUDGET_CHARS: usize = 7_200;
@@ -198,6 +199,51 @@ pub fn article_chat_system(level: u8, a: &ArticleText, summary: Option<&str>, re
     )
 }
 
+/// "Explain simply" in the word popup (P4 dev spec §3.2). The answer is JSON (see `define_term_schema`).
+pub fn define_term(level: u8, term: &str, sentence: &str, title: &str) -> Vec<ChatMsg> {
+    let sentence = if sentence.trim().is_empty() {
+        "(none)"
+    } else {
+        sentence.trim()
+    };
+    let title = if title.trim().is_empty() {
+        "(none)"
+    } else {
+        title.trim()
+    };
+    vec![
+        ChatMsg::system(format!(
+            "You are an English dictionary for a B1 learner who works in technology.\n{}\n\
+             Explain the meaning the term has in the given sentence. Give 2 or 3 short example sentences; \
+             at least one must be about the article's topic. Collocations are common word partners \
+             of this term (for the word \"decision\" they would be \"make a decision\", \"final decision\"). Syllables: dots between syllables, the stressed syllable in CAPITALS \
+             (e.g. sca·la·BIL·i·ty). Return JSON only.",
+            level_rules(level)
+        )),
+        ChatMsg::user(format!(
+            "Term: \"{term}\"\nSentence where it appeared: \"{sentence}\"\nArticle title: {title}\n\n\
+             Explain the meaning of the term as it is used in this sentence."
+        )),
+    ]
+}
+
+pub fn define_term_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "required": ["meaning_simple", "meaning_b1", "part_of_speech", "examples", "collocations"],
+        "properties": {
+            "meaning_simple": { "type": "string", "maxLength": 160 },
+            "meaning_b1": { "type": "string", "maxLength": 240 },
+            "part_of_speech": { "type": "string",
+                "enum": ["noun", "verb", "adjective", "adverb", "phrase", "phrasal verb", "idiom", "other"] },
+            "ipa": { "type": "string", "maxLength": 60 },
+            "syllables": { "type": "string", "maxLength": 60 },
+            "examples": { "type": "array", "minItems": 2, "maxItems": 3, "items": { "type": "string", "maxLength": 160 } },
+            "collocations": { "type": "array", "maxItems": 4, "items": { "type": "string", "maxLength": 40 } }
+        }
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuickAction {
@@ -278,5 +324,8 @@ mod tests {
         let sys = article_chat_system(2, &a, Some("Sum"), "Rel");
         assert!(sys.contains("(not from the article)") && sys.contains("Sum") && sys.contains("Rel"));
         assert!(QuickAction::KeyWords.message().contains("5 important"));
+        let d = define_term(2, "inference", "The model runs inference.", "Local AI");
+        assert!(d[0].content.contains("Return JSON only") && d[1].content.contains("\"inference\""));
+        assert_eq!(define_term_schema()["required"][0], "meaning_simple");
     }
 }

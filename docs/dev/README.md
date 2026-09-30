@@ -11,7 +11,7 @@ These documents turn [../SPEC.md](../SPEC.md) (the **what**) into ordered, testa
 | P1 | [P1-shell-and-news.md](P1-shell-and-news.md) | Menu-bar app + widget that fetches, ranks and picks one story a day. No AI. | ✅ v0.1.0 |
 | P2 | [P2-reader-and-ai-chat.md](P2-reader-and-ai-chat.md) | Read stories in the app, with a local AI chat panel (summarize, ask questions) | ✅ v0.2.0 |
 | P3 | [P3-learning-and-sources.md](P3-learning-and-sources.md) | "Today's lesson" (learning materials) + add a source from an example URL | ✅ v0.3.0 |
-| P4 | [P4-words.md](P4-words.md) | Word popup (macOS dictionary + AI), Word Book, 10-item FSRS quiz | |
+| P4 | [P4-words.md](P4-words.md) | Word popup (macOS dictionary + AI), Word Book, 10-item FSRS quiz | ✅ v0.4.0 |
 | P5 | [P5-voice-tutor.md](P5-voice-tutor.md) | Push-to-talk English tutor with corrections and session review | |
 | P6 | [P6-packaging.md](P6-packaging.md) | Self-contained `.app` with bundled sidecars (ad-hoc signed) | |
 

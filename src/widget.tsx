@@ -5,12 +5,14 @@ import "./styles/theme.css";
 import Widget from "./windows/widget/Widget";
 import { startAppStore } from "./stores/app";
 import { startAiStore } from "./stores/ai";
+import { startWordsStore } from "./stores/words";
 import { EVENTS, onEvent } from "./lib/api";
 import { ensureBody } from "./lib/extract";
 import Toasts from "./components/Toasts";
 
 startAppStore();
 startAiStore();
+startWordsStore();
 
 // The daily pick waits for the article text; the widget is always loaded, so it does the extraction.
 void onEvent<{ articleId: number }>(EVENTS.needsBody, ({ articleId }) => {

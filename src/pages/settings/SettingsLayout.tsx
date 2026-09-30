@@ -7,6 +7,8 @@ const LINKS = [
   { to: "/settings/feeds", label: "News sources" },
   { to: "/settings/notifications", label: "Notifications" },
   { to: "/settings/ai", label: "AI" },
+  { to: "/settings/voice", label: "Voice" },
+  { to: "/settings/learning", label: "Practice" },
 ];
 
 export default function SettingsLayout() {

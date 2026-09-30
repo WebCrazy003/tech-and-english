@@ -9,6 +9,10 @@ import defaultFeeds from "../../src-tauri/resources/default_feeds.json";
 import type { Channel } from "@tauri-apps/api/core";
 import type {
   AddFromExample,
+  DictEntry,
+  NewVocabItem,
+  QuizCard,
+  VocabItem,
   ArticleListItem,
   ChatMessage,
   DailyPick,
@@ -72,6 +76,8 @@ function install() {
       customModelPath: null,
     },
     readerAiPanelOpen: true,
+    tts: { voiceUri: null, rate: 0.85, wordRate: 0.7, volume: 1, pauseMs: 400 },
+    learning: { quizSize: 10, desiredRetention: 0.9, autoPronounce: true },
   };
   let mode: "standard" | "hibernate" = "standard";
   let nextId = 100;
@@ -209,6 +215,57 @@ function install() {
     "The new version makes files about 30 percent smaller. Many queries now run twice as fast.\n\n" +
     "**Key words**\nin-process — running inside your program\nParquet — a file format for tables";
   const changed = () => void emit("news://updated", { newCount: 0 });
+
+  // ---- P4: Word Book, dictionary, quizzes
+  const DICT: Record<string, DictEntry> = {
+    inference: {
+      headword: "inference", syllables: "in·fer·ence", pronunciation: "ˈinf(ə)rəns", partOfSpeech: "noun",
+      senses: ["a conclusion reached on the basis of evidence and reasoning", "the process of inferring something"],
+      examples: ["researchers are entrusted with drawing inferences from the data"], parsed: true,
+    },
+    database: {
+      headword: "database", syllables: "da·ta·base", pronunciation: "ˈdadəˌbās", partOfSpeech: "noun",
+      senses: ["a structured set of data held in a computer, especially one that is accessible in various ways"],
+      examples: [], parsed: true,
+    },
+  };
+  const key = (s: string) => s.trim().replace(/\s+/g, " ").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").toLowerCase();
+  const nowIso = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const vocabItem = (id: number, text: string, meaning: string | null, extra: Partial<VocabItem> = {}): VocabItem => ({
+    id, kind: text.includes(" ") ? "phrase" : "word", text, textKey: key(text), meaningSimple: meaning, meaningB1: null,
+    partOfSpeech: "noun", ipa: null, syllables: null, examples: [], collocations: [], notes: null, status: "new",
+    dueAt: null, lastReviewedAt: null, lastGrade: null, reviewCount: 0, rememberCount: 0, unsureCount: 0, forgotCount: 0,
+    createdAt: hoursAgo(48 + id), updatedAt: hoursAgo(1), ...extra,
+  });
+  let vocab: VocabItem[] = fresh
+    ? []
+    : [
+        vocabItem(1, "latency", "the delay before data starts to move", { status: "learning", reviewCount: 3, rememberCount: 2, forgotCount: 1, lastGrade: "remember", dueAt: hoursAgo(2), ipa: "ˈlātnsē" }),
+        vocabItem(2, "throughput", "how much work a system does in a time", { status: "learning", reviewCount: 2, rememberCount: 1, unsureCount: 1, lastGrade: "unsure", dueAt: hoursAgo(-20) }),
+        vocabItem(3, "data lake", "a big store of raw data in many formats", { status: "known", reviewCount: 6, rememberCount: 6, lastGrade: "remember", dueAt: hoursAgo(-24 * 30) }),
+        vocabItem(4, "idempotent", null),
+        vocabItem(5, "in-process", "running inside your program", { dueAt: null }),
+        vocabItem(6, "storage format", "the way data is written to disk"),
+      ];
+  const contexts: Record<number, { id: number; sentence: string; articleId: number | null; articleTitle: string | null; articleUrl: string | null; conversationId: null; createdAt: string }[]> = {
+    1: [{ id: 1, sentence: "Low latency matters for streaming.", articleId: 4, articleTitle: "Kafka 5.0: simpler streaming pipelines without ZooKeeper", articleUrl: null, conversationId: null, createdAt: hoursAgo(50) }],
+  };
+  let vocabId = 100;
+  let quizId = 1;
+  const history: { sessionId: number; finishedAt: string; total: number; remember: number; unsure: number; forgot: number; score: number; missed: VocabItem[] }[] = fresh
+    ? []
+    : [0.6, 0.75, 0.9].map((score, i) => ({ sessionId: 90 + i, finishedAt: hoursAgo(24 * (3 - i)), total: 10, remember: 6, unsure: 2, forgot: 2, score, missed: [] }));
+  const sessions: Record<number, { cards: QuizCard[]; grades: Record<number, string> }> = {};
+  const vocabChanged = () => void emit("vocab://changed", { itemId: null });
+  const dueCount = () => ({
+    due: vocab.filter((v) => v.reviewCount > 0 && v.dueAt && v.dueAt <= nowIso() && (v.meaningSimple || v.meaningB1)).length,
+    new: vocab.filter((v) => v.reviewCount === 0 && (v.meaningSimple || v.meaningB1)).length,
+    total: vocab.length,
+    ready: vocab.filter((v) => v.meaningSimple || v.meaningB1).length,
+  });
+  const hib = () => {
+    if (mode === "hibernate") throw { code: "hibernating", message: "unavailable in hibernate mode" };
+  };
 
   mockIPC(
     (cmd, raw) => {
@@ -373,6 +430,127 @@ function install() {
             models,
             availableMemoryGb: 7.8,
           };
+        case "get_cached_derivative":
+          return p.kind === "summary_b1" ? SUMMARY : null;
+        case "dictionary_lookup":
+          return new Promise((r) => setTimeout(() => r(DICT[key(p.term as string)] ?? null), 120));
+        case "define_term":
+          if (mode === "hibernate") throw { code: "hibernating", message: "unavailable in hibernate mode" };
+          return new Promise((r) =>
+            setTimeout(
+              () =>
+                r({
+                  meaningSimple: `the meaning of "${p.term}" in this story`,
+                  meaningB1: `In this article, "${p.term}" is used about how DuckDB works inside your program.`,
+                  partOfSpeech: String(p.term).includes(" ") ? "phrase" : "noun",
+                  ipa: null,
+                  syllables: "IN·fer·ence",
+                  examples: [`DuckDB uses ${p.term} to read files quickly.`, `We talked about ${p.term} at work.`],
+                  collocations: [`fast ${p.term}`],
+                }),
+              900,
+            ),
+          );
+        case "add_vocab_item": {
+          hib();
+          const it = p.item as NewVocabItem;
+          const k = key(it.text);
+          let item = vocab.find((v) => v.kind === it.kind && v.textKey === k);
+          const outcome = item ? "merged" : "created";
+          if (!item) {
+            item = vocabItem(vocabId++, it.text.trim(), it.meaningSimple ?? null, {
+              kind: it.kind, meaningB1: it.meaningB1 ?? null, partOfSpeech: it.partOfSpeech ?? null, ipa: it.ipa ?? null,
+              examples: it.examples ?? [], collocations: it.collocations ?? [], createdAt: nowIso(),
+            });
+            vocab = [item, ...vocab];
+          } else if (!item.meaningSimple && it.meaningSimple) item.meaningSimple = it.meaningSimple;
+          if (it.context?.sentence) {
+            (contexts[item.id] ??= []).unshift({
+              id: vocabId++, sentence: it.context.sentence, articleId: it.context.articleId ?? null,
+              articleTitle: it.context.articleId ? find(it.context.articleId).title : null, articleUrl: null, conversationId: null, createdAt: nowIso(),
+            });
+          }
+          vocabChanged();
+          return { outcome, item };
+        }
+        case "update_vocab_item": {
+          hib();
+          const item = vocab.find((v) => v.id === p.id)!;
+          Object.assign(item, p.patch as object);
+          item.textKey = key(item.text);
+          vocabChanged();
+          return item;
+        }
+        case "delete_vocab_item":
+          hib();
+          vocab = vocab.filter((v) => v.id !== p.id);
+          vocabChanged();
+          return null;
+        case "list_vocab": {
+          const f = (p.filter ?? {}) as { query?: string; kind?: string; status?: string; dueOnly?: boolean; pendingOnly?: boolean };
+          let items = vocab;
+          if (f.query) items = items.filter((v) => `${v.text} ${v.meaningSimple ?? ""}`.toLowerCase().includes(f.query!.toLowerCase()));
+          if (f.kind) items = items.filter((v) => v.kind === f.kind);
+          if (f.status) items = items.filter((v) => v.status === f.status);
+          if (f.dueOnly) items = items.filter((v) => v.dueAt && v.dueAt <= nowIso());
+          if (f.pendingOnly) items = items.filter((v) => !v.meaningSimple && !v.meaningB1);
+          return { items, nextCursor: null, total: items.length };
+        }
+        case "get_vocab_item": {
+          const item = vocab.find((v) => v.id === p.id)!;
+          const reviews = item.reviewCount
+            ? [{ grade: item.lastGrade, reviewedAt: hoursAgo(26), dueAfter: item.dueAt }, { grade: "remember", reviewedAt: hoursAgo(100), dueAfter: hoursAgo(60) }]
+            : [];
+          return { item, contexts: contexts[item.id] ?? [], reviews };
+        }
+        case "list_vocab_keys":
+          return vocab.map((v) => v.textKey);
+        case "due_count":
+          return dueCount();
+        case "export_vocab_csv":
+          hib();
+          return { path: `/Users/me/Downloads/tech-english-wordbook-${today}.csv` };
+        case "start_quiz": {
+          hib();
+          const pool = vocab.filter((v) => v.meaningSimple || v.meaningB1);
+          const ids = (p.itemIds as number[] | null) ?? pool.slice(0, (p.size as number) ?? 10).map((v) => v.id);
+          const cards: QuizCard[] = ids.map((id) => {
+            const v = vocab.find((x) => x.id === id)!;
+            return {
+              itemId: v.id, kind: v.kind, text: v.text, prompt: v.text, original: null,
+              answer: { meaning: v.meaningSimple ?? v.meaningB1 ?? "", example: v.examples[0] ?? null, partOfSpeech: v.partOfSpeech, ipa: v.ipa, context: contexts[v.id]?.[0]?.sentence ?? null },
+            };
+          });
+          const sessionId = quizId++;
+          sessions[sessionId] = { cards, grades: {} };
+          return { sessionId, cards };
+        }
+        case "grade_quiz_item": {
+          hib();
+          sessions[p.sessionId as number].grades[p.itemId as number] = p.grade as string;
+          const v = vocab.find((x) => x.id === p.itemId)!;
+          v.reviewCount++;
+          v.lastGrade = p.grade;
+          v.status = v.status === "new" ? "learning" : v.status;
+          v.dueAt = new Date(Date.now() + (p.grade === "forgot" ? 600_000 : 86_400_000 * 3)).toISOString();
+          vocabChanged();
+          return { nextDueAt: v.dueAt, status: v.status };
+        }
+        case "finish_quiz": {
+          const s = sessions[p.sessionId as number];
+          const g = Object.values(s.grades);
+          const count = (x: string) => g.filter((y) => y === x).length;
+          const [remember, unsure, forgot] = [count("remember"), count("unsure"), count("forgot")];
+          const r = {
+            sessionId: p.sessionId as number, finishedAt: nowIso(), total: s.cards.length, remember, unsure, forgot,
+            score: g.length ? (remember + 0.5 * unsure) / g.length : 0,
+            missed: vocab.filter((v) => ["forgot", "unsure"].includes(s.grades[v.id])),
+          };
+          history.push({ ...r, missed: [] });
+          return r;
+        }
+        case "list_quiz_history":
+          return history.slice(-((p.limit as number) ?? 5)).reverse();
         case "get_derivative":
           streamTo(
             p.channel as Channel<StreamEvent>,

@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod http;
+pub mod learning;
 pub mod logging;
 pub mod mode;
 pub mod news;
@@ -107,6 +108,14 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let provider: Arc<dyn ai::provider::LlmProvider> =
         Arc::new(ai::provider::LocalLlamaProvider::new(ai_manager.clone()));
     let ai_service = ai::service::AiService::new(db.clone(), clock.clone(), settings.clone(), events.clone(), provider);
+    // P4: Word Book and quizzes.
+    let vocab = learning::vocab::VocabService::new(
+        db.clone(),
+        clock.clone(),
+        settings.clone(),
+        events.clone(),
+        mode.clone(),
+    );
 
     #[cfg(target_os = "macos")]
     if !current.show_dock_icon {
@@ -124,6 +133,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         notify: notify.clone(),
         ai_manager: ai_manager.clone(),
         ai_service: ai_service.clone(),
+        vocab: vocab.clone(),
         downloader: Arc::new(ai::models::Downloader::default()),
         quitting: AtomicBool::new(false),
         pending_route: Mutex::new(None),
@@ -163,6 +173,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         pick,
         notify,
         ai: Some(ai_service),
+        vocab: Some(vocab),
     })
     .spawn();
     Ok(())
@@ -235,6 +246,7 @@ pub fn run() {
             commands::ai::start_ai,
             commands::ai::unload_ai,
             commands::ai::get_derivative,
+            commands::ai::get_cached_derivative,
             commands::ai::list_article_chat,
             commands::ai::send_article_chat,
             commands::ai::clear_article_chat,
@@ -242,6 +254,20 @@ pub fn run() {
             commands::reader::get_reader_article,
             commands::reader::fetch_article_html,
             commands::reader::save_article_body,
+            commands::words::dictionary_lookup,
+            commands::words::define_term,
+            commands::words::add_vocab_item,
+            commands::words::update_vocab_item,
+            commands::words::delete_vocab_item,
+            commands::words::list_vocab,
+            commands::words::get_vocab_item,
+            commands::words::list_vocab_keys,
+            commands::words::due_count,
+            commands::words::export_vocab_csv,
+            commands::words::start_quiz,
+            commands::words::grade_quiz_item,
+            commands::words::finish_quiz,
+            commands::words::list_quiz_history,
             commands::shell::set_widget_style,
             commands::shell::show_main,
             commands::shell::take_pending_route,

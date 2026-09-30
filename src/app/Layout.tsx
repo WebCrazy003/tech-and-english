@@ -10,7 +10,9 @@ import styles from "./Layout.module.css";
 const NAV = [
   { to: "/today", label: "Today", icon: "☀︎", key: "1" },
   { to: "/explore", label: "Explore", icon: "☰", key: "2" },
-  { to: "/settings", label: "Settings", icon: "⚙︎", key: "3" },
+  { to: "/wordbook", label: "Word Book", icon: "📖", key: "3" },
+  { to: "/practice", label: "Practice", icon: "✎", key: "4" },
+  { to: "/settings", label: "Settings", icon: "⚙︎", key: "5" },
 ];
 
 function ModeSwitch() {

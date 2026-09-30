@@ -12,6 +12,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../../migrations/0001_init.sql")),
     (2, include_str!("../../migrations/0002_reader_ai.sql")),
     (3, include_str!("../../migrations/0003_learning.sql")),
+    (4, include_str!("../../migrations/0004_vocab.sql")),
 ];
 
 /// Single SQLite connection shared by all services. rusqlite is synchronous, so
