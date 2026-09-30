@@ -64,16 +64,22 @@ pub struct ModelInfo {
     pub downloading: bool,
 }
 
-/// The model to use: the chosen one if downloaded, else the default, else any downloaded chat model.
-pub fn resolve_active(data_dir: &Path, chosen: Option<&str>) -> Option<ModelEntry> {
+/// The model to use for `role` ("chat" or "stt"): the chosen one if downloaded, else the role's
+/// default, else any downloaded model of that role.
+pub fn resolve(data_dir: &Path, role: &str, chosen: Option<&str>) -> Option<ModelEntry> {
     let dir = models_dir(data_dir);
-    let downloaded = |m: &ModelEntry| dir.join(&m.file).is_file();
-    let all = catalog();
+    let all: Vec<ModelEntry> = catalog().into_iter().filter(|m| m.role == role).collect();
+    let downloaded = |m: &&ModelEntry| dir.join(&m.file).is_file();
     chosen
-        .and_then(|id| all.iter().find(|m| m.id == id && downloaded(m)))
-        .or_else(|| all.iter().find(|m| m.default && downloaded(m)))
-        .or_else(|| all.iter().find(|m| m.role == "chat" && downloaded(m)))
+        .and_then(|id| all.iter().filter(downloaded).find(|m| m.id == id))
+        .or_else(|| all.iter().filter(downloaded).find(|m| m.default))
+        .or_else(|| all.iter().find(downloaded))
         .cloned()
+}
+
+/// The chat model to use.
+pub fn resolve_active(data_dir: &Path, chosen: Option<&str>) -> Option<ModelEntry> {
+    resolve(data_dir, "chat", chosen)
 }
 
 pub fn free_disk_bytes(path: &Path) -> Option<u64> {
@@ -228,12 +234,20 @@ async fn download_file(
     Ok(final_path)
 }
 
-pub fn list(data_dir: &Path, chosen: Option<&str>, downloader: &Downloader) -> Vec<ModelInfo> {
+/// `chosen_chat` / `chosen_stt`: the models picked in Settings.
+pub fn list(
+    data_dir: &Path,
+    chosen_chat: Option<&str>,
+    chosen_stt: Option<&str>,
+    downloader: &Downloader,
+) -> Vec<ModelInfo> {
     let dir = models_dir(data_dir);
-    let active = resolve_active(data_dir, chosen).map(|m| m.id);
+    let chat = resolve(data_dir, "chat", chosen_chat).map(|m| m.id);
+    let stt = resolve(data_dir, "stt", chosen_stt).map(|m| m.id);
     catalog()
         .into_iter()
         .map(|m| {
+            let active = if m.role == "stt" { &stt } else { &chat };
             let partial = std::fs::metadata(dir.join(format!("{}.part", m.file)))
                 .map(|x| x.len())
                 .unwrap_or(0);
@@ -275,8 +289,32 @@ mod tests {
     #[test]
     fn catalog_is_valid() {
         let c = catalog();
-        assert!(c.iter().filter(|m| m.default).count() == 1);
+        for role in ["chat", "stt"] {
+            assert_eq!(c.iter().filter(|m| m.role == role && m.default).count(), 1, "{role}");
+        }
         assert!(c.iter().all(|m| m.sha256.len() == 64 && m.url.starts_with("https://")));
+    }
+
+    #[test]
+    fn resolve_keeps_roles_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = models_dir(dir.path());
+        std::fs::create_dir_all(&models).unwrap();
+        assert_eq!(resolve(dir.path(), "chat", None), None);
+        // Only a whisper model is downloaded: it must not become the chat model.
+        std::fs::write(models.join("ggml-small.en.bin"), b"x").unwrap();
+        assert_eq!(resolve_active(dir.path(), Some("whisper-small.en")), None);
+        assert_eq!(resolve(dir.path(), "stt", None).unwrap().id, "whisper-small.en");
+        std::fs::write(models.join("ggml-base.en.bin"), b"x").unwrap();
+        assert_eq!(
+            resolve(dir.path(), "stt", None).unwrap().id,
+            "whisper-base.en",
+            "default first"
+        );
+        assert_eq!(
+            resolve(dir.path(), "stt", Some("whisper-small.en")).unwrap().id,
+            "whisper-small.en"
+        );
     }
 
     #[tokio::test]

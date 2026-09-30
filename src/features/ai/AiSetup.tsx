@@ -44,7 +44,8 @@ function DownloadButton({ m }: { m: ModelInfo }) {
 export function AiSetupCard() {
   const overview = useAi((s) => s.overview);
   if (!overview) return null;
-  const rec = overview.models.find((m) => m.default) ?? overview.models[0];
+  const chat = overview.models.filter((m) => m.role === "chat");
+  const rec = chat.find((m) => m.default) ?? chat[0];
   if (!rec) return null;
   return (
     <div className={styles.card}>
@@ -79,7 +80,7 @@ export function AiProblem({
   const navigate = useNavigate();
   const setMode = useApp((s) => s.setMode);
   const overview = useAi((s) => s.overview);
-  const hasModel = overview?.models.some((m) => m.downloaded);
+  const hasModel = overview?.models.some((m) => m.role === "chat" && m.downloaded);
   switch (code) {
     case "no_model":
       return (

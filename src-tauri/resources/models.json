@@ -45,6 +45,36 @@
       "recommendedRamGb": 12,
       "thinking": false,
       "default": false
+    },
+    {
+      "id": "whisper-base.en",
+      "role": "stt",
+      "displayName": "Whisper base.en (speech to text)",
+      "file": "ggml-base.en.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
+      "sizeBytes": 147964211,
+      "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+      "contextLength": 0,
+      "license": "MIT",
+      "licenseUrl": "https://github.com/ggml-org/whisper.cpp/blob/master/LICENSE",
+      "recommendedRamGb": 1,
+      "thinking": false,
+      "default": true
+    },
+    {
+      "id": "whisper-small.en",
+      "role": "stt",
+      "displayName": "Whisper small.en (more accurate, slower)",
+      "file": "ggml-small.en.bin",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
+      "sizeBytes": 487614201,
+      "sha256": "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+      "contextLength": 0,
+      "license": "MIT",
+      "licenseUrl": "https://github.com/ggml-org/whisper.cpp/blob/master/LICENSE",
+      "recommendedRamGb": 2,
+      "thinking": false,
+      "default": false
     }
   ]
 }

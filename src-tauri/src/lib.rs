@@ -15,6 +15,7 @@ pub mod seed;
 pub mod settings;
 pub mod shell;
 pub mod state;
+pub mod voice;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -172,6 +173,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         news,
         pick,
         notify,
+        settings: settings.clone(),
         ai: Some(ai_service),
         vocab: Some(vocab),
     })

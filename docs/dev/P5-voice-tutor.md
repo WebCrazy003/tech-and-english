@@ -32,8 +32,8 @@
 
 | Where | Add |
 |---|---|
-| Cargo | `cpal = "0.18"`, `rubato = "5.0"`, `hound = "3.5"`; `reqwest` gains the `multipart` feature |
-| Dev machine | `brew install whisper.cpp` (1.9.4 at the time of writing) |
+| Cargo | `cpal = "0.18"`, `rubato = "5.0"`, `hound = "3.5"`; `reqwest` gains the `multipart` feature; `serde_json` gains `preserve_order` (T0: otherwise the schema's keys are sorted and `reply` is not first) |
+| Dev machine | `brew install whisper.cpp` (1.9.4 at the time of writing). T0: there is no bottle for macOS 14, so it builds from source (needs `cmake`); run it from `~`, not from inside `~/Documents`. |
 | Models (`models.json`, role `stt`) | `ggml-base.en.bin` (~150 MB, default), `ggml-small.en.bin` (~490 MB, optional), from the official whisper.cpp model repository on Hugging Face. sha256 and the license (MIT) are recorded in T0. |
 | Bundle | `src-tauri/Info.plist` with `NSMicrophoneUsageDescription` = "Tech English uses the microphone only while you hold the talk button, to practise speaking English. Audio is processed on this Mac and not saved." |
 
@@ -41,7 +41,7 @@
 
 ## 2. T0 — Spike: whisper-server + tutor schema (½ day)
 
-Record the results in `docs/dev/notes/P5-whisper-and-tutor.md`.
+Record the results in `docs/dev/notes/P5-whisper-and-tutor.md`. **Done 2026-09-30** — the deltas below are marked "(T0)".
 
 **whisper-server:**
 1. Confirm the binary names installed by the formula (`whisper-server`, `whisper-cli`).
@@ -182,11 +182,11 @@ Correction rules ({{correction_policy}}):
 - The learner's words come from speech recognition. Ignore punctuation, capitalisation, filler words
   (um, uh), repeated words and false starts. Never correct those.
 - Correct at most ONE mistake per turn — the most important one.
-- When you correct: start the reply with the natural sentence, give a very short reason, then say
-  "Please say: <corrected sentence>". Set ask_repeat = true.
-- Mistakes already noted in this session: {{session_mistakes}}
+- When you correct: start the reply with the natural sentence, give a very short reason, then end the
+  reply with "Please say: <corrected sentence>". Nothing comes after it: no question. Set ask_repeat = true.
 
 Fields:
+- correction: null, or original = the learner's whole sentence, corrected = the whole corrected sentence.
 - unknown_terms: words the learner asked about or clearly did not understand (with your simple explanation).
 - useful_phrases: up to 2 natural phrases from YOUR reply that are worth learning.
 
@@ -197,9 +197,12 @@ Summary:
 """
 
 ### user
+(Mistakes already noted in this session: {{session_mistakes}}.)     ← only when there are some
 {{turn_instruction}}
 Learner said: "{{transcript}}"
 ```
+
+> **(T0)** `session_mistakes` is in the **user** message: changing the system prompt would make llama-server re-read the whole history. The Fields line for `correction` and "Nothing comes after it" were added because the model otherwise returned only the changed word, or asked a question after "Please say".
 
 **Values filled in:**
 
@@ -212,7 +215,7 @@ Learner said: "{{transcript}}"
 
 - **Opening turn:** `turn_instruction` = "Start the conversation: introduce the article in 2–3 sentences, then ask one easy question." and `transcript` = "".
 - **Normal turn:** `turn_instruction` = "".
-- **History:** the chat messages carry the last ≤ 12 turns. The **system prompt stays byte-identical for the whole session**, so `cache_prompt` can reuse it. Put `session_mistakes` in the user message instead of the system prompt if the T0 measurements show a cache penalty.
+- **History:** the chat messages carry the last ≤ 12 exchanges (user + tutor), or ≤ 5 with a 4k context. The **system prompt stays byte-identical for the whole session**, so `cache_prompt` can reuse it. **(T0)** History messages are sent exactly as before — the same user message and, for the tutor, the raw JSON it wrote — so only the new message is read. Removing old turns forces a re-read (≈ 4 s for 8 exchanges), and `--cache-reuse` is not supported for Qwen3.5. So when the window is full, drop down to the **last 3 exchanges in one step**; local replies and intents are not part of the LLM history.
 - **Article summary:** the cached B1 summary. If there is none, generate it first; this is part of the session start-up. For free talk: "No article. Talk about technology topics the learner likes: {{topics}}."
 
 ### 6.3 Streaming reply extraction (`voice/reply_stream.rs`)
@@ -240,7 +243,7 @@ Match on the lowercased transcript, with punctuation removed. **The whole uttera
 | Repeat | `^(can you |could you )?(please )?(say (that|it) again|repeat( that| it)?|pardon|sorry what|what did you say)( please)?$` | Frontend replays the last tutor reply |
 | Slower | `^(please )?(speak|talk) (more )?slow(ly|er)( please)?$`, `^slower( please)?$` | Rate −0.1 (min 0.5); replay |
 | Faster | `^(please )?(speak|talk) faster( please)?$`, `^faster( please)?$` | Rate +0.1 (max 1.2) |
-| End | `^(stop|end|finish)( the)? (conversation|session|talking)$`, `^(let's|lets) stop( here)?$` | End the session, then review |
+| End | `^(stop|end|finish)( the)? (conversation|session|talking)( please)?$`, `^(let's|lets) stop( here)?$`, `^stop( please)?$` (SPEC §12.5 lists a bare "stop") | End the session, then review |
 | Pronounce | `^how (do|should|can) (i|you|we) (say|pronounce) (the word )?(?P<w>.+)$` | Pronunciation drill (§8) |
 | Define (logged only) | `(what does|what's the meaning of|what is the meaning of) (?P<w>.+?)( mean)?$`, `^what is (?P<w>[a-z-]+)$` | Log an `unknown_word` observation, **then** send to the LLM as normal |
 
@@ -305,6 +308,7 @@ on_user_input(text, source: Voice | Typed):
 ```
 
 - Local replies ("Good. Let's continue.") are saved as tutor turns with `meta = {"local": true}`.
+- **(T0)** If `correction.ask_repeat` is true but the reply has no "please say", the engine adds the sentence "Please say: <corrected>" itself (the model does not always follow the rule).
 - If an LLM turn errors: say "Sorry, I had a problem. Could you say that again?", keep the phase, and log the error (without content).
 
 ### 8.3 Commands (Channel-based)
@@ -338,7 +342,7 @@ Channel `VoiceEvent`:
 ### 8.4 Pronunciation drill
 
 1. **Start:** from the Pronounce intent (`w` = the word, with quotes, "the word" and trailing punctuation stripped), **or** from UI: tap a word in a tutor bubble → **[Practise saying]** → `start_drill {word}`.
-2. **Hint:** the cached `define_term` result for the word, if there is one; otherwise one `define_term` call (P4) for `syllables`. If it fails, there is no hint.
+2. **Hint:** the cached `define_term` result for the word, if there is one; **(T0)** otherwise the macOS dictionary (syllables such as `in·fer·ence` plus the pronunciation with its stress mark, e.g. `ˈinf(ə)rəns`); only if both have nothing, one `define_term` call (P4) for `syllables`. (Any other request on llama-server's single slot evicts the tutor's cached prompt.) If it fails, there is no hint.
 3. The tutor says "Listen: <word>". The frontend speaks the word at rate 0.6, and the UI shows the hint with the label "hint".
 4. The user records. A **pass** means the normalized transcript contains the target word as a token. Plural and `-ed`/`-ing` variants of the target also pass.
    - Pass → "Good!", then back to `Discuss` (continue the conversation).
@@ -475,7 +479,7 @@ The seed cases (extend them to 30):
 | # | Task | Depends on | Done when |
 |---|---|---|---|
 | T0 | Spike: whisper-server, schema order, mic permission | – | Notes written; spec deltas applied; STT models in `models.json` |
-| T1 | Migration 0004 + repos + retention | – | Migration/repo/retention tests |
+| T1 | Migration 0005 + repos + retention | – | Migration/repo/retention tests |
 | T2 | SidecarManager refactor + WhisperSidecar | T0 | P2 tests green; whisper lifecycle tests with the fake launcher |
 | T3 | Audio capture + Info.plist + permission errors | T0 | Manual: meter moves; the mic indicator is off after stop; 60 s cap; silence notice. Unit: resample length ≈ duration × 16 k |
 | T4 | STT client + hallucination filter | T2 | wiremock tests; filter tests |

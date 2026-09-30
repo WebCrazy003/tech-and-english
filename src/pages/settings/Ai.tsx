@@ -54,7 +54,7 @@ export default function Ai() {
 
       <div className={styles.groupTitle}>Models</div>
       <div className={styles.group}>
-        {overview.models.map((m) => (
+        {overview.models.filter((m) => m.role === "chat").map((m) => (
           <div key={m.id} className={styles.field}>
             <div className={styles.fieldText}>
               <div className={styles.fieldLabel}>

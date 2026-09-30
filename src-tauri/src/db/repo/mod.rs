@@ -9,6 +9,7 @@ pub mod notifications;
 pub mod picks;
 pub mod topics;
 pub mod vocab;
+pub mod voice;
 
 use rusqlite::types::Value as SqlValue;
 

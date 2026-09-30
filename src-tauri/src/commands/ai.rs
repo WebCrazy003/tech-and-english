@@ -53,7 +53,12 @@ pub async fn ai_overview(state: State<'_, AppState>) -> CmdResult<AiOverview> {
     Ok(AiOverview {
         status: state.ai_manager.status(),
         engine_path: resolve_binary(s.ai.llama_server_path.as_deref(), &dir).map(|p| p.to_string_lossy().into_owned()),
-        models: models::list(&dir, s.ai.active_model.as_deref(), &state.downloader),
+        models: models::list(
+            &dir,
+            s.ai.active_model.as_deref(),
+            s.voice.stt_model.as_deref(),
+            &state.downloader,
+        ),
         available_memory_gb: crate::ai::manager::available_memory() as f64 / 1e9,
     })
 }

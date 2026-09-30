@@ -7,6 +7,7 @@ use serde_json::Value;
 use crate::clock::parse_hhmm;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
+use crate::voice::tutor::CorrectionPolicy;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -88,6 +89,8 @@ pub struct AiSettings {
     pub llm_why: bool,
     /// Override for the llama-server binary.
     pub llama_server_path: Option<String>,
+    /// Override for the whisper-server binary (P5).
+    pub whisper_server_path: Option<String>,
     /// A GGUF file outside the catalog (development).
     pub custom_model_path: Option<String>,
 }
@@ -101,6 +104,7 @@ impl Default for AiSettings {
             english_level: 2,
             llm_why: true,
             llama_server_path: None,
+            whisper_server_path: None,
             custom_model_path: None,
         }
     }
@@ -155,6 +159,42 @@ impl Default for LearningSettings {
     }
 }
 
+/// Voice tutor defaults (P5). The level is `ai.englishLevel`; the voice and the pause between
+/// sentences come from `tts`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct VoiceSettings {
+    /// Catalog id of the whisper model; `None` = the catalog default.
+    pub stt_model: Option<String>,
+    pub correction: CorrectionPolicy,
+    /// Tutor speech rate (0.5–1.2); `None` = the level's preset.
+    pub rate: Option<f64>,
+    /// Delete conversations after this many days; 0 = keep forever.
+    pub keep_transcripts_days: u32,
+    /// Stop recording after 1.2 s of silence (push-to-talk stays the default).
+    pub vad_auto_stop: bool,
+}
+
+impl Default for VoiceSettings {
+    fn default() -> Self {
+        Self {
+            stt_model: None,
+            correction: CorrectionPolicy::High,
+            rate: None,
+            keep_transcripts_days: 90,
+            vad_auto_stop: false,
+        }
+    }
+}
+
+/// Development switches.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DebugSettings {
+    /// Also write each recording to `debug-audio/` (P5 §4). Off by default.
+    pub keep_audio: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -181,6 +221,8 @@ pub struct Settings {
     pub reader_ai_panel_open: bool,
     pub tts: TtsSettings,
     pub learning: LearningSettings,
+    pub voice: VoiceSettings,
+    pub debug: DebugSettings,
 }
 
 impl Default for Settings {
@@ -206,6 +248,8 @@ impl Default for Settings {
             reader_ai_panel_open: true,
             tts: TtsSettings::default(),
             learning: LearningSettings::default(),
+            voice: VoiceSettings::default(),
+            debug: DebugSettings::default(),
         }
     }
 }
@@ -268,6 +312,12 @@ impl Settings {
         }
         if !(0.8..=0.95).contains(&self.learning.desired_retention) {
             return bad("Target recall must be 80–95 %");
+        }
+        if self.voice.rate.is_some_and(|r| !(0.5..=1.2).contains(&r)) {
+            return bad("Speaking speed must be 0.5–1.2");
+        }
+        if self.voice.keep_transcripts_days > 3650 {
+            return bad("Keep conversations for at most 3650 days (0 = forever)");
         }
         if self.notify_max_per_day > 5 {
             return bad("At most 5 high-interest notifications per day");
@@ -397,6 +447,20 @@ mod tests {
         assert!(apply_patch(&d, &json!({"tts": {"rate": 0.4}})).is_err());
         let s = apply_patch(&d, &json!({"tts": {"voiceUri": "com.apple.voice.premium.en-US.Zoe"}})).unwrap();
         assert_eq!(s.tts.rate, 0.85, "untouched nested field kept");
+    }
+
+    #[test]
+    fn voice_defaults_and_ranges() {
+        let d = Settings::default();
+        assert_eq!(
+            (d.voice.correction, d.voice.keep_transcripts_days),
+            (CorrectionPolicy::High, 90)
+        );
+        assert!(!d.debug.keep_audio && !d.voice.vad_auto_stop);
+        assert!(apply_patch(&d, &json!({"voice": {"rate": 1.5}})).is_err());
+        let s = apply_patch(&d, &json!({"voice": {"correction": "low", "rate": 0.7}})).unwrap();
+        assert_eq!((s.voice.correction, s.voice.rate), (CorrectionPolicy::Low, Some(0.7)));
+        assert!(apply_patch(&d, &json!({"voice": {"correction": "sometimes"}})).is_err());
     }
 
     #[test]

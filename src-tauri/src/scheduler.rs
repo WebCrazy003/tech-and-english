@@ -18,6 +18,7 @@ pub struct Scheduler {
     pub news: Arc<NewsService>,
     pub pick: Arc<PickService>,
     pub notify: Arc<NotifyService>,
+    pub settings: Arc<crate::settings::SettingsStore>,
     /// P2: AI "why" text for the pick, only while the model is already loaded.
     pub ai: Option<Arc<crate::ai::service::AiService>>,
     /// P4: fills missing Word Book meanings (dictionary, or the AI when it is loaded anyway).
@@ -50,7 +51,7 @@ impl Scheduler {
         }
     }
 
-    /// Once per local date: retention + "skipped" marking for yesterday's pick.
+    /// Once per local date: retention (articles, conversations) + "skipped" marking for yesterday's pick.
     async fn daily_jobs(&self) -> crate::error::AppResult<()> {
         let today = self.clock.today_local().to_string();
         let now = self.clock.now();
@@ -62,7 +63,13 @@ impl Scheduler {
         if !due {
             return Ok(());
         }
-        self.db.call(move |c| retention::run(c, now)).await?;
+        let keep_days = self.settings.get().voice.keep_transcripts_days;
+        self.db
+            .call(move |c| {
+                crate::db::repo::voice::retention(c, now, keep_days)?;
+                retention::run(c, now)
+            })
+            .await?;
         self.pick.mark_yesterday_skipped().await?;
         self.db
             .call(move |c| app_state::set(c, app_state::LAST_DAILY_JOB_DATE, &today))
