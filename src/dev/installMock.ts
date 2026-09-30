@@ -1,12 +1,25 @@
 // Dev-only fake backend so the UI can be previewed in a normal browser (no Tauri).
-// Active only in `vite dev` AND outside the Tauri webview. Add `?fresh` to start at onboarding.
+// Active only in `vite dev` AND outside the Tauri webview. Add `?fresh` to start at onboarding,
+// `?nolesson` to see the day without a lesson.
 
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import defaultTopics from "../../src-tauri/resources/default_topics.json";
 import defaultFeeds from "../../src-tauri/resources/default_feeds.json";
 import type { Channel } from "@tauri-apps/api/core";
-import type { ArticleListItem, ChatMessage, DailyPick, Feed, ModelInfo, Settings, StreamEvent, Topic } from "../lib/api";
+import type {
+  AddFromExample,
+  ArticleListItem,
+  ChatMessage,
+  DailyPick,
+  ExamplePage,
+  Feed,
+  FeedCandidate,
+  ModelInfo,
+  Settings,
+  StreamEvent,
+  Topic,
+} from "../lib/api";
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -29,6 +42,7 @@ function breakdown(total: number) {
 
 function install() {
   const fresh = new URLSearchParams(location.search).has("fresh");
+  const noLesson = new URLSearchParams(location.search).has("nolesson");
   (window as unknown as Record<string, unknown>).__MOCKED__ = true;
 
   let settings: Settings = {
@@ -37,6 +51,7 @@ function install() {
     fetchIntervalStandardMin: 20,
     fetchIntervalHibernateMin: 45,
     ingestMaxAgeDays: 7,
+    lessonMaxAgeDays: 60,
     hnIncludeNew: false,
     rankingWeights: { topicRelevance: 0.35, freshness: 0.2, popularity: 0.15, sourcePreference: 0.1, novelty: 0.1, userHistory: 0.1 },
     notifyDailyPick: true,
@@ -62,39 +77,52 @@ function install() {
   let nextId = 100;
   let topics: Topic[] = fresh
     ? []
-    : (defaultTopics as Omit<Topic, "id" | "enabled" | "notify" | "notifyThreshold">[]).slice(0, 6).map((t, i) => ({
+    : (defaultTopics as Omit<Topic, "id" | "enabled" | "notify" | "notifyThreshold" | "learn">[]).slice(0, 6).map((t, i) => ({
         ...t,
         id: i + 1,
         enabled: true,
         notify: t.priority === 3,
         notifyThreshold: null,
+        learn: t.name === "Data Engineering" && !noLesson,
       }));
+  if (!fresh) {
+    topics.push({
+      id: 7, name: "learn data engineering", keywords: ["data engineering course", "what is data engineering"],
+      excludedKeywords: [], priority: 2, enabled: true, notify: false, notifyThreshold: null, learn: false,
+    });
+  }
   let feeds: Feed[] = fresh
     ? []
-    : (defaultFeeds as { kind: "rss" | "hn"; name: string; url: string; sourceWeight: number }[]).slice(0, 8).map((f, i) => ({
-        ...f,
-        id: i + 1,
-        enabled: true,
-        lastFetchedAt: hoursAgo(0.2),
-        lastError: i === 5 ? "HTTP 503" : null,
-        consecutiveFailures: i === 5 ? 2 : 0,
-      }));
+    : (defaultFeeds as { kind: "rss" | "hn"; name: string; url: string; sourceWeight: number; learning?: boolean }[])
+        .filter((f, i) => i < 8 || f.learning)
+        .map((f, i) => ({
+          ...f,
+          id: i + 1,
+          enabled: true,
+          learning: f.learning ?? false,
+          lastFetchedAt: hoursAgo(0.2),
+          lastError: i === 5 ? "HTTP 503" : null,
+          consecutiveFailures: i === 5 ? 2 : 0,
+        }));
 
-  const samples: [string, string, string, number, number | null][] = [
-    ["New local AI model runs twice as fast on Apple Silicon", "Simon Willison", "LLMs", 91, 412],
-    ["How we built a multi-agent system with MCP and tool calling", "Latent Space", "AI Agents", 86, 230],
-    ["DuckDB 2.0 brings a new storage format for faster analytics", "DuckDB Blog", "Data Engineering", 80, 156],
-    ["Kafka 5.0: simpler streaming pipelines without ZooKeeper", "Confluent Blog", "Data Engineering", 74, null],
-    ["Python 3.15 makes the free-threaded build the default", "DEV Community: #python", "Python", 70, 98],
-    ["A practical guide to evaluating RAG systems", "Hugging Face Blog", "LLMs", 66, null],
-    ["Why our data warehouse moved to a lakehouse with Iceberg", "Netflix TechBlog", "Data Engineering", 61, 45],
-    ["Fine-tuning small open-weight models on a laptop", "Towards Data Science", "Machine Learning", 55, null],
-    ["The hidden cost of context windows in production LLM apps", "Interconnects", "LLMs", 52, 77],
-    ["Apple announces new Mac mini with M5 chip", "The Verge", "AI", 44, 310],
+  // title, source, topic, score, HN points, learning score
+  const samples: [string, string, string, number, number | null, number][] = [
+    ["New local AI model runs twice as fast on Apple Silicon", "Simon Willison", "LLMs", 91, 412, 0],
+    ["How we built a multi-agent system with MCP and tool calling", "Latent Space", "AI Agents", 86, 230, 0.5],
+    ["DuckDB 2.0 brings a new storage format for faster analytics", "DuckDB Blog", "Data Engineering", 80, 156, 0.35],
+    ["Kafka 5.0: simpler streaming pipelines without ZooKeeper", "Confluent Blog", "Data Engineering", 74, null, 0],
+    ["Python 3.15 makes the free-threaded build the default", "DEV Community: #python", "Python", 70, 98, 0],
+    ["A practical guide to evaluating RAG systems", "Hugging Face Blog", "LLMs", 66, null, 0.5],
+    ["Why our data warehouse moved to a lakehouse with Iceberg", "Netflix TechBlog", "Data Engineering", 61, 45, 0],
+    ["Fine-tuning small open-weight models on a laptop", "Towards Data Science", "Machine Learning", 55, null, 0.35],
+    ["The hidden cost of context windows in production LLM apps", "Interconnects", "LLMs", 52, 77, 0],
+    ["Apple announces new Mac mini with M5 chip", "The Verge", "AI", 44, 310, 0],
+    ["How to build a data pipeline with Airflow: a step-by-step tutorial", "Dagster Blog", "Data Engineering", 48, null, 1],
+    ["Kafka explained: a beginner's guide to streaming", "Confluent Blog", "Data Engineering", 42, null, 0.85],
   ];
   const articles: ArticleListItem[] = fresh
     ? []
-    : samples.map(([title, source, topic, score, hn], i) => ({
+    : samples.map(([title, source, topic, score, hn, learning], i) => ({
         id: i + 1,
         url: `https://example.com/story-${i + 1}`,
         title,
@@ -116,10 +144,22 @@ function install() {
         bodyStatus: i === 5 ? "paywalled" : "none",
         difficulty: null,
         readingMinutes: null,
+        learningScore: learning,
       }));
+  const today = new Date().toISOString().slice(0, 10);
   const pick: DailyPick | null = fresh
     ? null
-    : { date: new Date().toISOString().slice(0, 10), article: articles[0], why: "Matches your topics: LLMs, AI · 412 points on Hacker News" };
+    : { date: today, kind: "story", article: articles[0], why: "Matches your topics: LLMs, AI · 412 points on Hacker News" };
+  const lesson: DailyPick | null =
+    fresh || noLesson
+      ? null
+      : {
+          date: today,
+          kind: "lesson",
+          article: { ...articles[10], publishedAt: hoursAgo(24 * 9), difficulty: "medium", readingMinutes: 12 },
+          why: "Tutorial · Data Engineering · from a learning source",
+        };
+  if (lesson) articles[10] = lesson.article;
 
   const find = (id: number) => articles.find((a) => a.id === id)!;
   const bodyHtml =
@@ -200,6 +240,8 @@ function install() {
           topics = topics.filter((t) => t.id !== p.id);
           return null;
         case "preview_topic_matches":
+          // Keyword phrases like "data engineering course" match nothing in real news.
+          if ((p.keywords as string[]).every((k) => k.split(" ").length >= 3)) return { matched: 0, total: 240 };
           return { matched: Math.min(articles.length, (p.keywords as string[]).length * 3), total: 240 };
         case "list_feeds":
           return feeds;
@@ -218,8 +260,15 @@ function install() {
         case "refresh_now":
           return { newCount: 3 };
         case "list_articles": {
-          const f = (p.filter ?? {}) as { query?: string; savedOnly?: boolean; unreadOnly?: boolean; topicId?: number };
+          const f = (p.filter ?? {}) as {
+            query?: string;
+            savedOnly?: boolean;
+            unreadOnly?: boolean;
+            learningOnly?: boolean;
+            topicId?: number;
+          };
           let items = articles.filter((a) => !a.hidden);
+          if (f.learningOnly) items = items.filter((a) => (a.learningScore ?? 0) >= 0.5);
           if (f.query) items = items.filter((a) => a.title.toLowerCase().includes(f.query!.toLowerCase()));
           if (f.savedOnly) items = items.filter((a) => a.saved);
           if (f.unreadOnly) items = items.filter((a) => a.readStatus === "unread");
@@ -244,6 +293,48 @@ function install() {
           return null;
         case "get_today_pick":
           return pick && !pick.article.hidden ? pick : null;
+        case "get_today_lesson":
+          return lesson && !lesson.article.hidden ? lesson : null;
+        case "discover_feeds": {
+          const url = String(p.url);
+          if (!/^https?:\/\//.test(url)) throw { code: "invalid", message: "That is not a valid URL" };
+          const host = new URL(url).hostname.replace(/^www\./, "");
+          const page: ExamplePage = {
+            url,
+            title: url.includes("startdataengineering") ? "Master Data Engineering: Always Be in Demand" : "Do You Actually Need Real-Time Data?",
+            description: "A friendly explanation for data engineers.",
+            publishedAt: hoursAgo(24 * 5),
+            siteName: url.includes("startdataengineering") ? "Start Data Engineering" : host,
+            isFeed: false,
+            canSave: true,
+          };
+          const candidates: FeedCandidate[] = url.includes("startdataengineering")
+            ? []
+            : [
+                { url: `https://${host}/feed`, title: `${host} newsletter`, itemCount: 20, newestPublishedAt: hoursAgo(30), alreadyAdded: url.includes("duckdb") },
+                ...(url.includes("two")
+                  ? [{ url: `https://${host}/comments/rss.xml`, title: "Short notes", itemCount: 8, newestPublishedAt: hoursAgo(200), alreadyAdded: false }]
+                  : []),
+              ];
+          return new Promise((r) => setTimeout(() => r({ page, candidates }), 900));
+        }
+        case "add_feed_from_example": {
+          const inp = p.input as AddFromExample;
+          let feed: Feed | null = null;
+          if (inp.feedUrl) {
+            feed = { kind: "rss", name: inp.name, url: inp.feedUrl, sourceWeight: 0.6, enabled: true, learning: inp.learning,
+              id: nextId++, lastFetchedAt: null, lastError: null, consecutiveFailures: 0 };
+            feeds = [...feeds, feed];
+          }
+          let article: ArticleListItem | null = null;
+          if (inp.saveArticle) {
+            article = { ...articles[0], id: nextId++, url: inp.url, title: "Do You Actually Need Real-Time Data?", sourceName: "Example site",
+              saved: true, score: null, breakdown: null, hnId: null, hnPoints: null, hnComments: null, learningScore: 0.5, bodyStatus: "none" };
+            articles.push(article);
+          }
+          changed();
+          return { feed, article };
+        }
         case "get_pick_preview":
           return articles.find((a) => !a.hidden) ?? null;
         case "news_status":

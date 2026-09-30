@@ -13,8 +13,17 @@ pub struct CompiledTopic {
 }
 
 /// Hyphens and spaces are treated as equal ("tool-calling" == "tool calling").
-fn prep(text: &str) -> String {
+pub(crate) fn prep(text: &str) -> String {
     text.replace('-', " ")
+}
+
+/// Case-insensitive regex that only matches `pattern` on word boundaries.
+/// Use it on text passed through [`prep`].
+pub(crate) fn bounded_regex(pattern: &str) -> Option<Regex> {
+    Regex::new(&format!(
+        r"(?i)(?:^|[^\p{{L}}\p{{N}}])(?:{pattern})(?:$|[^\p{{L}}\p{{N}}])"
+    ))
+    .ok()
 }
 
 fn keyword_regex(kw: &str) -> Option<Regex> {
@@ -22,8 +31,7 @@ fn keyword_regex(kw: &str) -> Option<Regex> {
     if k.is_empty() {
         return None;
     }
-    let escaped = regex::escape(&k).replace(' ', r"\s+");
-    Regex::new(&format!(r"(?i)(?:^|[^\p{{L}}\p{{N}}]){escaped}(?:$|[^\p{{L}}\p{{N}}])")).ok()
+    bounded_regex(&regex::escape(&k).replace(' ', r"\s+"))
 }
 
 pub fn priority_factor(priority: u8) -> f64 {
@@ -83,6 +91,7 @@ mod tests {
             enabled: true,
             notify: false,
             notify_threshold: None,
+            learn: false,
         }
     }
 

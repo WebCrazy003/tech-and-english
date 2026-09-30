@@ -5,6 +5,7 @@
   - Let the user add a source by pasting an **example** article or blog URL.
 - **SPEC sections:** §7.1 (`learn`), §7.11, §7.12, §13 (P3), §14 (P3), §18 P3.
 - **Branch:** `p3/learning-sources` → tag `v0.3.0`
+- **Status:** ✅ done 2026-09-30. QA: [../qa/P3.md](../qa/P3.md). Changes found while building are marked **(changed)**.
 - **Why:** the user's keyword topic "learn data engineering" matched 0 of 363 stories. Learning needs a *content-type* signal (is this a tutorial?) on top of the *subject* match (is this data engineering?).
 
 ## 0. Scope
@@ -51,7 +52,9 @@ INSERT INTO daily_picks_new(date, kind, article_id, why, why_source, created_at)
 DROP TABLE daily_picks;
 ALTER TABLE daily_picks_new RENAME TO daily_picks;
 
--- new learning sources, only if the URL is not already there
+-- new learning sources for existing installs only, if the URL is not already there
+-- (changed: the real migration uses INSERT … SELECT … FROM (VALUES …) WHERE EXISTS (SELECT 1 FROM feeds),
+--  so a fresh install gets them from onboarding, not before it)
 INSERT OR IGNORE INTO feeds(kind, name, url, source_weight, learning, created_at) VALUES
   ('rss','Practical Data Modeling (Joe Reis)','https://practicaldatamodeling.substack.com/feed',0.6,1,'2026-09-29T00:00:00Z'),
   ('rss','Data Engineering Central','https://dataengineeringcentral.substack.com/feed',0.6,1,'2026-09-29T00:00:00Z'),
@@ -69,7 +72,8 @@ UPDATE feeds SET learning = 1 WHERE url IN (
 
 - The seeds in `resources/default_feeds.json` get the same entries, with a `learning` field and the group **"Learning"**, so new installs match.
 - **Retention:** articles that were a lesson pick are protected, like story picks (the existing `daily_picks` check covers both kinds).
-- **Migration test:** apply 0001–0003 on a DB that has P1 data (picks, feeds) → picks keep `kind='story'`; the new feeds are added once; running it on a DB that already has one of those URLs adds no duplicate.
+- **Migration test:** apply 0001–0003 on a DB that has P1 data (picks, feeds) → picks keep `kind='story'`; the new feeds are added once; running it on a DB that already has one of those URLs adds no duplicate. A fresh DB gets no feeds from the migration.
+- **Backfill (changed):** articles stored before P3 have no `learning_score`. `NewsService::backfill_learning` fills it once when the scheduler starts (1,065 real articles: 2.5 s in the background).
 
 ---
 
@@ -88,20 +92,21 @@ pub fn is_course_spam(text: &str) -> bool
 - **News:** `announces?` · `launch(es|ed)?` · `raises` · `acquires?` · `funding` · `now available` · `introducing` · `release notes` · `weekly roundup` · `this week in` · `roundup`
 - **Course spam:** `training in` · `course in` · `classes in` · `institute` · `certification training` · `bootcamp in` · `job guarantee` · `placement` · `who'?s hiring`
 
-**Score:**
-- +0.25 per distinct learning pattern (max 0.75)
+**Score (changed, see SPEC §7.11):**
+- the first learning pattern in the **title**: +0.50; every other distinct pattern (title or description): +0.20; description-only patterns: at most +0.40; all patterns: at most +0.75
 - +0.35 if `feed_learning`
 - +0.10 if `word_count ≥ 1200`
-- −0.30 if any news pattern
+- −0.30 if a news/opinion pattern is in the **title** (also `generally available`, `is GA`, `released`, `the future of`, `podcast`, `episode`)
 - clamp to 0..1
-- `is_course_spam` → 0
+- `is_course_spam` → 0. Spam needs a strong phrase (`certification training`, `job guarantee`, `placement assistance`, `with placements`, `who's hiring`, buying/selling accounts) **or** a course word together with a place (`… in Hyderabad`, `… near me`). `training in`, `classes in` and a bare `placement` are not spam on their own (real titles: "Distributed training in JAX", "Data classes in Python", "Kubernetes pod placement").
+- `lesson_kind` (for the "why" text): the strongest pattern, title first; deep dive > tutorial > guide > explainer.
 
 **When it is computed:**
 1. At ingest, for new and merged articles (P1 `ingest.rs` calls it).
 2. When a body is saved (P2 `save_article_body`), because `word_count` is now known.
 3. When a feed's `learning` flag changes: recompute for that feed's articles from the last 60 days.
 
-**Tests** use **real titles from the live data** (2026-09-29), stored in `tests/fixtures/learning_titles.json` as `{title, feed_learning, expect: "lesson" | "not" | "spam"}`. At least 25 cases, for example:
+**Tests** use **real titles from the live data** (2026-09-29/30), stored in `tests/fixtures/learning_titles.json` as `{title, description?, feed_learning, expect: "lesson" | "not" | "spam"}`. 46 cases (23 lesson, 15 not, 8 spam), for example:
 
 | Title | Expect |
 |---|---|
@@ -201,6 +206,13 @@ pub async fn discover(http, url) -> AppResult<(ExamplePage, Vec<FeedCandidate>)>
 - It triggers a fetch of the new feed.
 - It works **even when no feed is found** (`feedUrl` absent). Then it only saves the article.
 
+**Found while building (changed):**
+- `ExamplePage` also has `isFeed` (the pasted URL is a feed; it becomes the only candidate) and `canSave` (false for a feed URL, or when the page could not be read).
+- Comment feeds and GitHub commit feeds are skipped. The same feed under two URLs is shown once.
+- Medium answers apps with HTTP 403. Then `discover` tries the Medium feed URL directly (`canSave = false`).
+- Candidates whose `<link rel=alternate>` all fail are followed by the probes, too.
+- `published_at` also comes from JSON-LD `datePublished` (Substack).
+
 **Tests** (wiremock, one fixture page per case):
 - `<link rel=alternate>` with a relative href
 - Substack subdomain
@@ -221,7 +233,7 @@ pub async fn discover(http, url) -> AppResult<(ExamplePage, Vec<FeedCandidate>)>
 
 | Place | Change |
 |---|---|
-| Widget | Header row: segmented **Story \| Lesson** (hidden if there is no lesson). The lesson card shows the label "Today's lesson" and the lesson "why". The pill text is "Story + lesson ready". |
+| Widget | Header row: segmented **Story \| Lesson** (hidden if there is no lesson; it takes the place of the app name). The lesson card shows the label "Today's lesson" and the lesson "why". The pill text is "Story + lesson ready" (the pill is now 200 px wide so it fits). |
 | `/today` | Two cards side by side (stacked if the window is narrow): **Today's story** and **Today's lesson**. The lesson card shows the learn topic chip and "Why this lesson". If there is no lesson: "No lesson today. Turn on **Learn** for a topic in Settings › Topics." |
 | `/explore` | **Learning only** checkbox (`learning_score ≥ 0.5`). Rows with a high learning score show a small "📘 Learn" badge. |
 | Settings › Topics | **Learn** switch: "Also find learning materials (tutorials, explainers) for this topic". **Tip:** if a topic's name starts with "learn" and it matched 0 stories in 3 days, show: "Tip: learning topics work better as a switch. Turn on **Learn** for your subject topic (e.g. Data Engineering) and delete this one." |

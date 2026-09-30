@@ -45,3 +45,17 @@ Engine: llama.cpp b11256 (official macOS arm64 build), `-ngl 99`. All models Q4_
 **Decision:** Qwen3.5 4B stays the default (`models.json` `default: true`). The other two remain in the catalog as options in Settings › AI.
 
 **Budgets (SPEC §16, P2 rows):** B1 summary first time: first text 2.1 s (≤ 12 s ✅), complete 17.6 s (≤ 30 s ✅). Chat: first answer 3.5 s (≤ 6 s ✅), follow-up 0.7 s (≤ 2 s ✅).
+
+## P3 — learning & sources (2026-09-30)
+
+Debug-build tests on the Mac mini M1 (network time dominates the live numbers).
+
+| What | Result |
+|---|---|
+| Migration 0003 on a copy of the real database (1,065 articles) | 10 ms |
+| One-time learning-score backfill of those 1,065 articles (+ rematch + rescore) | 2.5 s, in the background at start |
+| One rescore, stories + lessons (1,065 articles, 60-day lesson window) | 68 ms |
+| First fetch cycle, 42 feeds (learning feeds keep up to 60 days) | 16 s wall time, ~460 articles |
+| "Find feed" per example URL (live, 13 URLs) | 1.1–10.4 s (median about 2 s) |
+
+Idle memory and CPU are unchanged in kind: P3 adds no background process, only one small query per minute (lesson check) and a few SQL rows per article.

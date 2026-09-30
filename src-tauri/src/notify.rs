@@ -147,8 +147,9 @@ impl NotifyService {
         }
     }
 
-    /// Exactly one per day; called by the pick service when the pick is made.
-    pub async fn daily_pick(&self, item: &ArticleListItem) -> AppResult<()> {
+    /// Exactly one per day; called by the pick service when the story is made.
+    /// It mentions today's lesson too, if there is one (P3).
+    pub async fn daily_pick(&self, item: &ArticleListItem, lesson: Option<&ArticleListItem>) -> AppResult<()> {
         if !self.settings.get().notify_daily_pick {
             return Ok(());
         }
@@ -157,8 +158,14 @@ impl NotifyService {
             .flatten()
             .collect::<Vec<_>>()
             .join(" · ");
-        self.notifier
-            .send("Today's tech story is ready.", &format!("\"{}\"\n{}", item.title, meta))?;
+        let (title, body) = match lesson {
+            Some(l) => (
+                "Today's story and lesson are ready.",
+                format!("\"{}\"\n{}\nLesson: \"{}\"", item.title, meta, l.title),
+            ),
+            None => ("Today's tech story is ready.", format!("\"{}\"\n{}", item.title, meta)),
+        };
+        self.notifier.send(title, &body)?;
         let (id, now) = (item.id, fmt_ts(self.clock.now()));
         self.db
             .call(move |c| notifications::insert(c, "daily_pick", Some(id), &now))

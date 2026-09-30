@@ -53,6 +53,29 @@ pub fn score(i: &RankInputs, w: &RankingWeights) -> ScoreBreakdown {
     b
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LessonInputs {
+    /// Max relevance over topics with Learn on.
+    pub learn_relevance: f64,
+    pub learning_score: f64,
+    pub source_weight: f64,
+    pub hn_points: Option<i64>,
+    pub hn_comments: Option<i64>,
+    pub topic_affinity: f64,
+    pub source_affinity: f64,
+}
+
+/// 0..100 (SPEC §7.11). Freshness is left out on purpose: good tutorials stay useful.
+pub fn lesson_score(i: &LessonInputs) -> f64 {
+    let user_history = 0.5 + 0.5 * (i.topic_affinity + i.source_affinity).clamp(-1.0, 1.0);
+    100.0
+        * (0.35 * i.learn_relevance.clamp(0.0, 1.0)
+            + 0.30 * i.learning_score.clamp(0.0, 1.0)
+            + 0.15 * i.source_weight.clamp(0.0, 1.0)
+            + 0.10 * popularity(i.hn_points, i.hn_comments)
+            + 0.10 * user_history)
+}
+
 /// (topic delta, source delta). The topic delta is multiplied by the article's
 /// relevance to its primary topic by the caller.
 pub fn affinity_deltas(kind: InteractionKind) -> Option<(f64, f64)> {
@@ -124,6 +147,28 @@ mod tests {
         let b = score(&mid, &w);
         // .30*.5 + .15*.5 + .15*.4 + .20*.5 + .10*1 + .10*.5
         assert!(close(b.total, 100.0 * (0.15 + 0.075 + 0.06 + 0.10 + 0.10 + 0.05)));
+    }
+
+    #[test]
+    fn lesson_score_weights() {
+        let best = LessonInputs {
+            learn_relevance: 1.0,
+            learning_score: 1.0,
+            source_weight: 1.0,
+            hn_points: Some(500),
+            hn_comments: Some(200),
+            topic_affinity: 1.0,
+            source_affinity: 0.0,
+        };
+        assert!(close(lesson_score(&best), 100.0));
+        let mid = LessonInputs {
+            learn_relevance: 0.8,
+            learning_score: 0.6,
+            source_weight: 0.3,
+            ..Default::default()
+        };
+        // .35*.8 + .30*.6 + .15*.3 + .10*.4 + .10*.5
+        assert!(close(lesson_score(&mid), 100.0 * (0.28 + 0.18 + 0.045 + 0.04 + 0.05)));
     }
 
     #[test]

@@ -4,7 +4,7 @@ A local-first macOS menu-bar app. It picks one interesting tech story a day for 
 
 - Product spec: [docs/SPEC.md](docs/SPEC.md)
 - Development plan per phase: [docs/dev/](docs/dev/README.md)
-- Current phase: **P2 — Reader & AI chat** (P1 done, v0.1.0)
+- Current phase: **P4 — Words** (P1–P3 done: v0.1.0 news, v0.2.0 reader + AI chat, v0.3.0 learning & sources)
 
 ## Requirements
 
@@ -38,11 +38,18 @@ The Reader's summaries and chat use a local model through llama.cpp's `llama-ser
 
 The model starts when you first use the AI and unloads after 10 idle minutes or in Hibernate mode.
 
+## Lessons and example sources
+
+- **Today's lesson.** Turn on **Learn** for a topic (Settings › Topics). Each day the app then also picks a tutorial or explainer for that topic, next to the news story.
+- **Add from an example.** Settings › News sources: paste an article you like. The app finds that site's feed, and can save the article so you can read it right away.
+
 ## Check and test
 
 ```bash
 scripts/check.sh                                   # fmt, clippy, all tests, typecheck, lint
 cargo test --manifest-path src-tauri/Cargo.toml --test live_feeds -- --ignored --nocapture   # live feeds (internet)
+cargo test --manifest-path src-tauri/Cargo.toml --test live_feeds discover_examples -- --ignored --nocapture   # "find feed" on real URLs
+DB_COPY=/path/to/copy-of-app.db cargo test --manifest-path src-tauri/Cargo.toml --test live_feeds real_db_copy -- --ignored --nocapture   # upgrade a COPY of real data
 TE_MODEL=qwen3.5-4b cargo test --manifest-path src-tauri/Cargo.toml --release --test live_ai -- --ignored --nocapture   # real model
 scripts/measure-idle.sh "Standard" 10              # idle memory/CPU of the release build
 ```

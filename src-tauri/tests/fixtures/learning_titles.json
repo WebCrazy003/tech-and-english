@@ -1,0 +1,199 @@
+[
+ {
+  "title": "How to Evaluate RAG Pipeline Quality: Metrics and Test Harness",
+  "expect": "lesson"
+ },
+ {
+  "title": "How to Detect Outliers in Python Using the Interquartile Range (IQR)",
+  "expect": "lesson"
+ },
+ {
+  "title": "AWS Control Tower Landing Zone: A Complete Setup Guide for Multi-Account Migrations",
+  "expect": "lesson"
+ },
+ {
+  "title": "How to Create an AI Chatbot from Scratch: A Step-by-Step Guide",
+  "expect": "lesson"
+ },
+ {
+  "title": "Python Decorators Explained Simply",
+  "expect": "lesson"
+ },
+ {
+  "title": "Shadow roots, explained with live examples",
+  "expect": "lesson"
+ },
+ {
+  "title": "A Beginner to Intermediate Guide to Unit Testing in Python with Pytest",
+  "expect": "lesson"
+ },
+ {
+  "title": "Python Syntax Cheat Sheet: A Beginner's Guide to Brackets, Colons, and Alignment",
+  "expect": "lesson"
+ },
+ {
+  "title": "MLOps Explained: What Happens After You Build a Machine Learning Model?",
+  "expect": "lesson"
+ },
+ {
+  "title": "Cloud computing concepts: scaling, serverless, HA and VPCs explained",
+  "expect": "lesson"
+ },
+ {
+  "title": "Stop writing your own agent loop: a hands-on tutorial for OpenAI's Agents API",
+  "expect": "lesson"
+ },
+ {
+  "title": "How to replay dead-lettered messages in RabbitMQ",
+  "expect": "lesson"
+ },
+ {
+  "title": "Cloud Architecture Anti-Patterns (and What to Do Instead)",
+  "expect": "lesson"
+ },
+ {
+  "title": "Delta Lake ACID vs Apache Spark DataFrames: What the Databricks Data Engineer Exam Really Tests",
+  "expect": "lesson"
+ },
+ {
+  "title": "How to roll out Genie One: A step-by-step enterprise playbook",
+  "expect": "lesson"
+ },
+ {
+  "title": "Your data, your storage, your rules: a 2026 guide to storing Unity Catalog managed tables",
+  "expect": "lesson"
+ },
+ {
+  "title": "How to Catch Data Drift When Every Feature Looks Normal",
+  "expect": "lesson",
+  "feed_learning": true
+ },
+ {
+  "title": "How to Make Your First World Model from Scratch",
+  "expect": "lesson",
+  "feed_learning": true
+ },
+ {
+  "title": "Context engineering is already possible in your warehouse. Here's how to get started.",
+  "expect": "lesson",
+  "feed_learning": true
+ },
+ {
+  "title": "AWS Weekly Roundup: GPT-6 Sol and Luna, Claude Opus 5.5 on Amazon Bedrock, Strands harness, and more (September 28, 2026)",
+  "expect": "not"
+ },
+ {
+  "title": "Announcing Claude Sonnet 5.5 on Snowflake Cortex AI",
+  "expect": "not"
+ },
+ {
+  "title": "Nvidia wants to put a watchdog chip next to every AI agent",
+  "expect": "not"
+ },
+ {
+  "title": "Announcing DuckDB 1.5.6",
+  "expect": "not",
+  "feed_learning": true
+ },
+ {
+  "title": "Introducing Gemini 3.8 Live with Live Avatar",
+  "expect": "not"
+ },
+ {
+  "title": "OpenAI launches GPT-6.1 Sol, says it nearly matches GPT-6 Astra and costs less",
+  "expect": "not"
+ },
+ {
+  "title": "Meta launches enterprise AI platform, hires MongoDB CEO to lead new initiative",
+  "expect": "not"
+ },
+ {
+  "title": "Introducing enhanced custom event buses in Amazon EventBridge for enterprise-scale event-driven applications",
+  "expect": "not"
+ },
+ {
+  "title": "Data Engineering Weekly #289",
+  "expect": "not"
+ },
+ {
+  "title": "Do You Actually Need Real-Time Data?",
+  "expect": "not",
+  "feed_learning": true
+ },
+ {
+  "title": "Anthropic Launches Monthly Economic Index Survey to Track How AI Changes Work",
+  "expect": "not"
+ },
+ {
+  "title": "OpenAI DevDay 2026: The biggest news and announcements",
+  "expect": "not"
+ },
+ {
+  "title": "FBI Announces ShinyHunters Arrest",
+  "expect": "not"
+ },
+ {
+  "title": "Learning Data Engineering in Noida: What to Study, Who's Hiring, and How to Pick a Course",
+  "expect": "spam"
+ },
+ {
+  "title": "Python Full Stack Training in Bangalore | Learnmore Technologies 🚀",
+  "expect": "spam"
+ },
+ {
+  "title": "SAP Datasphere Training In Hyderabad | Course Online",
+  "expect": "spam"
+ },
+ {
+  "title": "Data Science Course in Delhi with Placements: Learn Skills and Prepare for Your Career",
+  "expect": "spam"
+ },
+ {
+  "title": "Unlock Your Future: The Ultimate Guide to Mastering AI Classes in Ahmedabad for 2026",
+  "expect": "spam"
+ },
+ {
+  "title": "The Ultimate Guide to Buying Verified KuCoin Accounts for ...",
+  "expect": "spam"
+ },
+ {
+  "title": "Top 2 Site To Buy Pinterest Accounts: A Complete Guide to Account Safety",
+  "expect": "spam"
+ },
+ {
+  "title": "Trusted 82 Places To Buy Verified Gate.io Account Full KYC Explained",
+  "expect": "spam"
+ },
+ {
+  "title": "dbt Core v1.12 is GA",
+  "description": "dbt Core v1.12: what's new and how to upgrade.",
+  "feed_learning": true,
+  "expect": "not"
+ },
+ {
+  "title": "The Future of Data Engineering in the Age of AI | Erfan Hesami",
+  "description": "AI Agents, Coding & Fundamentals",
+  "feed_learning": true,
+  "expect": "not"
+ },
+ {
+  "title": "A Hands-On Guide to Building Streaming Transformation with Estuary Derivation Agent Skills",
+  "feed_learning": true,
+  "expect": "lesson"
+ },
+ {
+  "title": "What Is Estuary? A Platform for CDC, Streaming & Batch Data",
+  "feed_learning": true,
+  "expect": "lesson"
+ },
+ {
+  "title": "DuckDB and Hugging Face: Querying Datasets Directly",
+  "description": "Hugging Face is where much of the machine learning community publishes and finds its datasets. This post shows how to query them with a step-by-step example.",
+  "feed_learning": true,
+  "expect": "lesson"
+ },
+ {
+  "title": "Top 25 SQL Interview Questions for Data Engineers, Explained",
+  "expect": "lesson"
+ }
+]

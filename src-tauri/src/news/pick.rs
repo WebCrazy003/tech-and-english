@@ -1,20 +1,22 @@
-//! Daily pick (SPEC §7.8).
+//! Daily pick (SPEC §7.8): today's story, and from P3 today's lesson (SPEC §7.11).
 
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
 use super::NewsService;
 use super::body::BodyWaiters;
+use super::learning::{LESSON_THRESHOLD, LearningInput, lesson_kind};
 use super::model::InteractionKind;
 use super::why;
 use crate::clock::{Clock, fmt_ts, parse_hhmm};
 use crate::db::Db;
 use crate::db::repo::articles::{self, ArticleListItem};
-use crate::db::repo::{interactions, picks};
+use crate::db::repo::interactions;
+use crate::db::repo::picks::{self, LESSON, STORY};
 use crate::error::AppResult;
 use crate::events::{self, EventSink};
 use crate::notify::NotifyService;
@@ -22,11 +24,15 @@ use crate::settings::SettingsStore;
 
 pub const MIN_RELEVANCE: f64 = 0.3;
 pub const REPEAT_EXCLUSION_DAYS: i64 = 14;
+/// A lesson is never an article picked (as story or lesson) in the last 60 days.
+pub const LESSON_REPEAT_EXCLUSION_DAYS: i64 = 60;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DailyPick {
     pub date: String,
+    /// "story" | "lesson"
+    pub kind: String,
     pub article: ArticleListItem,
     pub why: String,
 }
@@ -78,6 +84,54 @@ pub fn select(conn: &Connection, now: DateTime<Utc>, today: NaiveDate) -> AppRes
     Ok(candidates(conn, now, today, 1)?.into_iter().next())
 }
 
+pub fn has_learn_topics(conn: &Connection) -> AppResult<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM topics WHERE learn = 1 AND enabled = 1)",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+/// Lesson candidates (SPEC §7.11): learning material that matches a Learn topic, at most
+/// `max_age_days` old, not hidden or paywalled, not `exclude` (today's story), and not a pick
+/// of either kind in the last 60 days. Best lesson score first; ties → newest.
+pub fn lesson_candidates(
+    conn: &Connection,
+    now: DateTime<Utc>,
+    today: NaiveDate,
+    max_age_days: u32,
+    exclude: Option<i64>,
+    limit: usize,
+) -> AppResult<Vec<i64>> {
+    let cutoff = fmt_ts(now - Duration::days(max_age_days as i64));
+    let since_date = (today - Duration::days(LESSON_REPEAT_EXCLUSION_DAYS)).to_string();
+    let mut st = conn.prepare(
+        "SELECT a.id FROM articles a
+         WHERE a.hidden = 0 AND a.body_status != 'paywalled' AND a.lesson_score IS NOT NULL
+           AND a.learning_score >= ?1
+           AND EXISTS (SELECT 1 FROM article_topics at JOIN topics t ON t.id = at.topic_id
+                       WHERE at.article_id = a.id AND t.learn = 1 AND t.enabled = 1 AND at.relevance >= ?2)
+           AND COALESCE(a.published_at, a.discovered_at) >= ?3
+           AND a.id IS NOT ?4
+           AND a.id NOT IN (SELECT article_id FROM daily_picks WHERE date >= ?5)
+         ORDER BY a.lesson_score DESC, a.discovered_at DESC, a.id DESC LIMIT ?6",
+    )?;
+    let rows = st
+        .query_map(
+            rusqlite::params![
+                LESSON_THRESHOLD,
+                MIN_RELEVANCE,
+                cutoff,
+                exclude,
+                since_date,
+                limit as i64
+            ],
+            |r| r.get(0),
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 fn why_for(conn: &Connection, article_id: i64, hn_points: Option<i64>) -> AppResult<String> {
     let mut st = conn.prepare(
         "SELECT t.name, at.relevance FROM article_topics at JOIN topics t ON t.id = at.topic_id WHERE at.article_id = ?1",
@@ -93,18 +147,61 @@ fn why_for(conn: &Connection, article_id: i64, hn_points: Option<i64>) -> AppRes
     Ok(why::template(&topics, hn_points, source_aff))
 }
 
-/// Today's pick, unless the user marked it "not interested" (then the UI shows the next best story).
-fn load_pick(conn: &Connection, date: &str) -> AppResult<Option<DailyPick>> {
-    let Some(row) = picks::get(conn, date)? else {
+/// "Tutorial · Data Engineering · from a learning source"
+fn lesson_why_for(conn: &Connection, article_id: i64) -> AppResult<String> {
+    let (title, description, word_count, feed_learning) = articles::learning_inputs(conn, article_id)?;
+    let kind = lesson_kind(&LearningInput {
+        title: &title,
+        description: description.as_deref(),
+        feed_learning,
+        word_count,
+    });
+    let topic: Option<String> = conn
+        .query_row(
+            "SELECT t.name FROM article_topics at JOIN topics t ON t.id = at.topic_id
+             WHERE at.article_id = ?1 AND t.learn = 1 AND t.enabled = 1 ORDER BY at.relevance DESC LIMIT 1",
+            [article_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(why::lesson(kind.label(), topic.as_deref(), feed_learning))
+}
+
+/// Today's pick of `kind`, unless the user marked it "not interested"
+/// (then the UI shows the next best story, or no lesson).
+fn load_pick(conn: &Connection, date: &str, kind: &str) -> AppResult<Option<DailyPick>> {
+    let Some(row) = picks::get(conn, date, kind)? else {
         return Ok(None);
     };
-    if articles::get_item(conn, row.article_id)?.hidden {
+    let article = articles::get_item(conn, row.article_id)?;
+    if article.hidden {
         return Ok(None);
     }
     Ok(Some(DailyPick {
         date: row.date,
-        article: articles::get_item(conn, row.article_id)?,
+        kind: row.kind,
+        article,
         why: row.why,
+    }))
+}
+
+/// Insert a pick unless one of this kind exists already (another tick won the race).
+fn insert_pick(conn: &Connection, date: &str, kind: &str, article_id: i64, now: &str) -> AppResult<Option<DailyPick>> {
+    if picks::get(conn, date, kind)?.is_some() {
+        return Ok(None);
+    }
+    let item = articles::get_item(conn, article_id)?;
+    let why = if kind == LESSON {
+        lesson_why_for(conn, article_id)?
+    } else {
+        why_for(conn, article_id, item.hn_points)?
+    };
+    picks::insert(conn, date, kind, article_id, &why, now)?;
+    Ok(Some(DailyPick {
+        date: date.to_string(),
+        kind: kind.to_string(),
+        article: item,
+        why,
     }))
 }
 
@@ -166,9 +263,24 @@ impl PickService {
         Ok(BodyWaiters::wait(rx, self.body_wait).await)
     }
 
+    /// P2: make sure the body is extracted; skip paywalled candidates.
+    async fn first_readable(&self, cands: &[i64]) -> AppResult<i64> {
+        for id in cands {
+            if self.ensure_body(*id).await?.as_deref() != Some("paywalled") {
+                return Ok(*id);
+            }
+        }
+        Ok(cands[0])
+    }
+
     pub async fn today(&self) -> AppResult<Option<DailyPick>> {
         let date = self.clock.today_local().to_string();
-        self.db.call(move |c| load_pick(c, &date)).await
+        self.db.call(move |c| load_pick(c, &date, STORY)).await
+    }
+
+    pub async fn today_lesson(&self) -> AppResult<Option<DailyPick>> {
+        let date = self.clock.today_local().to_string();
+        self.db.call(move |c| load_pick(c, &date, LESSON)).await
     }
 
     /// Best candidate right now, without saving it (shown before pick time).
@@ -182,7 +294,8 @@ impl PickService {
             .await
     }
 
-    /// Make today's pick if it's time and none exists. Returns the pick when newly created.
+    /// Make today's story and lesson if it's time and they don't exist yet.
+    /// Returns the story when it is newly created. One notification per day, sent with the story.
     pub async fn ensure_today(&self) -> AppResult<Option<DailyPick>> {
         let settings = self.settings.get();
         if !settings.onboarding_done {
@@ -196,67 +309,102 @@ impl PickService {
         let _guard = self.pick_lock.lock().await;
         let (now, today) = (self.clock.now(), now_local.date_naive());
         let date = today.to_string();
-        let d = date.clone();
+
+        let story = self.ensure_story(now, today, &date).await?;
+        let lesson = self
+            .ensure_lesson(now, today, &date, settings.lesson_max_age_days)
+            .await?;
+
+        if let Some(p) = &story {
+            tracing::info!(article = p.article.id, "daily pick created");
+            events::emit(self.events.as_ref(), events::PICK_CHANGED, p);
+        }
+        if let Some(l) = &lesson {
+            tracing::info!(article = l.article.id, "daily lesson created");
+            events::emit(self.events.as_ref(), events::PICK_CHANGED, l);
+        }
+        if let Some(p) = &story {
+            let d = date.clone();
+            let todays_lesson = self.db.call(move |c| load_pick(c, &d, LESSON)).await?;
+            if let Err(e) = self
+                .notify
+                .daily_pick(&p.article, todays_lesson.as_ref().map(|l| &l.article))
+                .await
+            {
+                tracing::warn!(error = %e, "daily pick notification failed");
+            }
+        }
+        Ok(story)
+    }
+
+    async fn ensure_story(&self, now: DateTime<Utc>, today: NaiveDate, date: &str) -> AppResult<Option<DailyPick>> {
+        let d = date.to_string();
         let (exists, cands) = self
             .db
-            .call(move |c| Ok((picks::get(c, &d)?.is_some(), candidates(c, now, today, PICK_ATTEMPTS)?)))
+            .call(move |c| {
+                Ok((
+                    picks::get(c, &d, STORY)?.is_some(),
+                    candidates(c, now, today, PICK_ATTEMPTS)?,
+                ))
+            })
             .await?;
         if exists || cands.is_empty() {
             return Ok(None);
         }
-        // P2: make sure the body is extracted; skip paywalled stories.
-        let mut chosen = None;
-        for id in &cands {
-            match self.ensure_body(*id).await?.as_deref() {
-                Some("paywalled") => continue,
-                _ => {
-                    chosen = Some(*id);
-                    break;
-                }
-            }
-        }
-        let id = chosen.unwrap_or(cands[0]);
-        let created = self
-            .db
-            .tx(move |tx| {
-                if picks::get(tx, &date)?.is_some() {
-                    return Ok(None);
-                }
-                let item = articles::get_item(tx, id)?;
-                let why = why_for(tx, id, item.hn_points)?;
-                picks::insert(tx, &date, id, &why, &fmt_ts(now))?;
-                Ok(Some(DailyPick {
-                    date,
-                    article: item,
-                    why,
-                }))
-            })
-            .await?;
-        if let Some(p) = &created {
-            tracing::info!(article = p.article.id, "daily pick created");
-            events::emit(self.events.as_ref(), events::PICK_CHANGED, p);
-            if let Err(e) = self.notify.daily_pick(&p.article).await {
-                tracing::warn!(error = %e, "daily pick notification failed");
-            }
-        }
-        Ok(created)
+        let id = self.first_readable(&cands).await?;
+        let d = date.to_string();
+        self.db.tx(move |tx| insert_pick(tx, &d, STORY, id, &fmt_ts(now))).await
     }
 
-    /// Record "skipped" (once) if yesterday's pick was never opened.
-    pub async fn mark_yesterday_skipped(&self) -> AppResult<()> {
-        let yesterday = (self.clock.today_local() - Duration::days(1)).to_string();
-        let target = self
+    async fn ensure_lesson(
+        &self,
+        now: DateTime<Utc>,
+        today: NaiveDate,
+        date: &str,
+        max_age_days: u32,
+    ) -> AppResult<Option<DailyPick>> {
+        let d = date.to_string();
+        let cands = self
             .db
             .call(move |c| {
-                let Some(p) = picks::get(c, &yesterday)? else {
-                    return Ok(None);
-                };
-                let opened = interactions::has(c, p.article_id, "opened")?;
-                let skipped = interactions::has(c, p.article_id, "skipped")?;
-                Ok((!opened && !skipped).then_some(p.article_id))
+                if picks::get(c, &d, LESSON)?.is_some() || !has_learn_topics(c)? {
+                    return Ok(Vec::new());
+                }
+                let story = picks::get(c, &d, STORY)?.map(|p| p.article_id);
+                lesson_candidates(c, now, today, max_age_days, story, PICK_ATTEMPTS)
             })
             .await?;
-        if let Some(id) = target {
+        if cands.is_empty() {
+            return Ok(None);
+        }
+        let id = self.first_readable(&cands).await?;
+        let d = date.to_string();
+        self.db
+            .tx(move |tx| insert_pick(tx, &d, LESSON, id, &fmt_ts(now)))
+            .await
+    }
+
+    /// Record "skipped" (once) for yesterday's story and lesson if they were never opened.
+    pub async fn mark_yesterday_skipped(&self) -> AppResult<()> {
+        let yesterday = (self.clock.today_local() - Duration::days(1)).to_string();
+        let targets = self
+            .db
+            .call(move |c| {
+                let mut out = Vec::new();
+                for kind in [STORY, LESSON] {
+                    let Some(p) = picks::get(c, &yesterday, kind)? else {
+                        continue;
+                    };
+                    let opened = interactions::has(c, p.article_id, "opened")?;
+                    let skipped = interactions::has(c, p.article_id, "skipped")?;
+                    if !opened && !skipped {
+                        out.push(p.article_id);
+                    }
+                }
+                Ok(out)
+            })
+            .await?;
+        for id in targets {
             self.news.record_interaction(id, InteractionKind::Skipped).await?;
         }
         Ok(())
@@ -466,6 +614,122 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n, 1);
+    }
+
+    // ------------------------------------------------------------ lessons (P3)
+
+    const DE: &[&str] = &[
+        "data pipeline",
+        "Kafka",
+        "dbt",
+        "Airflow",
+        "data engineering",
+        "streaming",
+    ];
+
+    /// Story feed + a learning feed with tutorials, news and spam (tests/fixtures/rss_learning.xml).
+    async fn setup_lessons(learn: bool) -> (Harness, PickService, Arc<RecordingNotifier>, MockServer, i64) {
+        let (h, pick, notifier, s) = setup("2026-09-29T09:00:00Z").await;
+        Mock::given(path("/learn"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(include_str!("../../tests/fixtures/rss_learning.xml")),
+            )
+            .mount(&s)
+            .await;
+        let de = add_topic_learn(&h, "Data Engineering", DE, learn).await;
+        add_feed_learning(&h, "rss", &format!("{}/learn", s.uri()), true).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        (h, pick, notifier, s, de)
+    }
+
+    const TUTORIALS: &[&str] = &[
+        "How to build a data pipeline with Airflow: a step-by-step tutorial",
+        "Kafka explained: a beginner's guide to streaming",
+        "Understanding dbt tests",
+    ];
+
+    #[tokio::test]
+    async fn lesson_is_chosen_and_never_the_story() {
+        let (_h, pick, notifier, _s, _) = setup_lessons(true).await;
+        let story = pick.ensure_today().await.unwrap().expect("story");
+        let lesson = pick.today_lesson().await.unwrap().expect("lesson");
+        assert_eq!((story.kind.as_str(), lesson.kind.as_str()), ("story", "lesson"));
+        assert_ne!(story.article.id, lesson.article.id);
+        assert!(
+            TUTORIALS.contains(&lesson.article.title.as_str()),
+            "{}",
+            lesson.article.title
+        );
+        assert!(
+            lesson.why.ends_with("· Data Engineering · from a learning source"),
+            "{}",
+            lesson.why
+        );
+        let sent = notifier.sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1, "one daily notification");
+        assert_eq!(sent[0].0, "Today's story and lesson are ready.");
+        assert!(sent[0].1.contains(&format!("Lesson: \"{}\"", lesson.article.title)));
+        assert!(pick.ensure_today().await.unwrap().is_none());
+        assert_eq!(notifier.sent.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn news_and_spam_are_never_lessons_and_lessons_do_not_repeat() {
+        let (h, pick, _n, _s, _) = setup_lessons(true).await;
+        let mut seen = Vec::new();
+        for _ in 0..6 {
+            pick.ensure_today().await.unwrap();
+            if let Some(l) = pick.today_lesson().await.unwrap() {
+                assert!(TUTORIALS.contains(&l.article.title.as_str()), "{}", l.article.title);
+                assert!(!seen.contains(&l.article.id), "repeated within 60 days");
+                seen.push(l.article.id);
+            }
+            h.clock.advance(Duration::days(1));
+        }
+        assert!(seen.len() >= 2, "{seen:?}");
+        assert!(pick.today_lesson().await.unwrap().is_none(), "pool used up");
+    }
+
+    #[tokio::test]
+    async fn no_learn_topic_means_no_lesson() {
+        let (_h, pick, notifier, _s, _) = setup_lessons(false).await;
+        pick.ensure_today().await.unwrap().expect("story");
+        assert!(pick.today_lesson().await.unwrap().is_none());
+        assert_eq!(notifier.sent.lock().unwrap()[0].0, "Today's tech story is ready.");
+    }
+
+    #[tokio::test]
+    async fn a_lesson_found_later_is_added_quietly() {
+        let (h, pick, notifier, _s, de) = setup_lessons(false).await;
+        pick.ensure_today().await.unwrap().expect("story");
+        h.db.call(move |c| Ok(c.execute("UPDATE topics SET learn = 1 WHERE id = ?1", [de])?))
+            .await
+            .unwrap();
+        h.news.reload_topics().await.unwrap();
+        assert!(pick.ensure_today().await.unwrap().is_none(), "no second story");
+        let lesson = pick.today_lesson().await.unwrap().expect("lesson added later");
+        assert_eq!(notifier.sent.lock().unwrap().len(), 1, "no second notification");
+        let lesson_events = h
+            .events
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(n, p)| n == events::PICK_CHANGED && p["kind"] == "lesson")
+            .count();
+        assert_eq!(lesson_events, 1, "the UI hears about it");
+        assert!(TUTORIALS.contains(&lesson.article.title.as_str()));
+    }
+
+    #[tokio::test]
+    async fn unopened_lesson_is_marked_skipped() {
+        let (h, pick, _n, _s, _) = setup_lessons(true).await;
+        pick.ensure_today().await.unwrap();
+        let id = pick.today_lesson().await.unwrap().unwrap().article.id;
+        h.clock.advance(Duration::days(1));
+        pick.mark_yesterday_skipped().await.unwrap();
+        let skipped = h.db.call(move |c| interactions::has(c, id, "skipped")).await.unwrap();
+        assert!(skipped);
     }
 
     #[tokio::test]

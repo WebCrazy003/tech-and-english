@@ -30,6 +30,7 @@ export interface Settings {
   fetchIntervalStandardMin: number;
   fetchIntervalHibernateMin: number;
   ingestMaxAgeDays: number;
+  lessonMaxAgeDays: number;
   hnIncludeNew: boolean;
   rankingWeights: RankingWeights;
   notifyDailyPick: boolean;
@@ -110,6 +111,8 @@ export interface Topic {
   enabled: boolean;
   notify: boolean;
   notifyThreshold: number | null;
+  /** Also find learning materials (tutorials, explainers) for this topic. */
+  learn: boolean;
 }
 export type TopicInput = Omit<Topic, "id"> & { id?: number };
 
@@ -123,6 +126,8 @@ export interface Feed {
   lastFetchedAt: string | null;
   lastError: string | null;
   consecutiveFailures: number;
+  /** This source mostly publishes learning material. */
+  learning: boolean;
 }
 export interface FeedInput {
   id?: number;
@@ -131,6 +136,7 @@ export interface FeedInput {
   url: string;
   sourceWeight?: number;
   enabled?: boolean;
+  learning?: boolean;
 }
 
 export interface ScoreBreakdown {
@@ -164,7 +170,12 @@ export interface ArticleListItem {
   bodyStatus: BodyStatus;
   difficulty: "easy" | "medium" | "hard" | null;
   readingMinutes: number | null;
+  /** 0..1; from 0.5 on it counts as learning material. */
+  learningScore: number | null;
 }
+
+export const LESSON_THRESHOLD = 0.5;
+export const isLearning = (a: ArticleListItem) => (a.learningScore ?? 0) >= LESSON_THRESHOLD;
 
 export type BodyStatus = "none" | "ok" | "failed" | "paywalled";
 
@@ -190,8 +201,37 @@ export interface SaveBody {
 
 export interface DailyPick {
   date: string;
+  kind: "story" | "lesson";
   article: ArticleListItem;
   why: string;
+}
+
+export interface ExamplePage {
+  url: string;
+  title: string;
+  description: string | null;
+  publishedAt: string | null;
+  siteName: string;
+  /** The pasted link is a feed itself. */
+  isFeed: boolean;
+  /** The page could be read, so it can be saved as an article. */
+  canSave: boolean;
+}
+
+export interface FeedCandidate {
+  url: string;
+  title: string | null;
+  itemCount: number;
+  newestPublishedAt: string | null;
+  alreadyAdded: boolean;
+}
+
+export interface AddFromExample {
+  url: string;
+  feedUrl: string | null;
+  name: string;
+  learning: boolean;
+  saveArticle: boolean;
 }
 
 export type InteractionKind = "opened" | "read" | "saved" | "liked" | "not_interested";
@@ -201,6 +241,7 @@ export interface ArticleFilter {
   feedId?: number;
   unreadOnly?: boolean;
   savedOnly?: boolean;
+  learningOnly?: boolean;
   minScore?: number;
   query?: string;
   since?: string;
@@ -287,6 +328,10 @@ export const api = {
   upsertFeed: (feed: FeedInput) => call<Feed>("upsert_feed", { feed }),
   deleteFeed: (id: number) => call<void>("delete_feed", { id }),
   testFeed: (url: string) => call<FeedTestResult>("test_feed", { url }),
+  discoverFeeds: (url: string) =>
+    call<{ page: ExamplePage; candidates: FeedCandidate[] }>("discover_feeds", { url }),
+  addFeedFromExample: (input: AddFromExample) =>
+    call<{ feed: Feed | null; article: ArticleListItem | null }>("add_feed_from_example", { input }),
 
   refreshNow: () => call<{ newCount: number }>("refresh_now"),
   listArticles: (filter: ArticleFilter, cursor?: string | null, limit?: number) =>
@@ -297,6 +342,7 @@ export const api = {
   setSaved: (articleId: number, saved: boolean) => call<void>("set_saved", { articleId, saved }),
   openArticle: (articleId: number) => call<void>("open_article", { articleId }),
   getTodayPick: () => call<DailyPick | null>("get_today_pick"),
+  getTodayLesson: () => call<DailyPick | null>("get_today_lesson"),
   getPickPreview: () => call<ArticleListItem | null>("get_pick_preview"),
   newsStatus: () => call<NewsStatus>("news_status"),
 

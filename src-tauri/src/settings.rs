@@ -114,6 +114,8 @@ pub struct Settings {
     pub fetch_interval_standard_min: u32,
     pub fetch_interval_hibernate_min: u32,
     pub ingest_max_age_days: u32,
+    /// Lessons (and items of learning feeds) may be up to this many days old (P3).
+    pub lesson_max_age_days: u32,
     pub hn_include_new: bool,
     pub ranking_weights: RankingWeights,
     pub notify_daily_pick: bool,
@@ -138,6 +140,7 @@ impl Default for Settings {
             fetch_interval_standard_min: 20,
             fetch_interval_hibernate_min: 45,
             ingest_max_age_days: 7,
+            lesson_max_age_days: 60,
             hn_include_new: false,
             ranking_weights: RankingWeights::default(),
             notify_daily_pick: true,
@@ -168,6 +171,9 @@ impl Settings {
         }
         if !(1..=30).contains(&self.ingest_max_age_days) {
             return bad("Maximum article age must be 1–30 days");
+        }
+        if !(14..=180).contains(&self.lesson_max_age_days) {
+            return bad("Lesson age must be 14–180 days");
         }
         if (self.ranking_weights.sum() - 1.0).abs() > 0.001 {
             return bad("Ranking weights must add up to 1.0");
@@ -315,6 +321,13 @@ mod tests {
     fn rejects_out_of_range_interval() {
         assert!(apply_patch(&Settings::default(), &json!({"fetchIntervalStandardMin": 5})).is_err());
         assert!(apply_patch(&Settings::default(), &json!({"fetchIntervalHibernateMin": 61})).is_err());
+    }
+
+    #[test]
+    fn lesson_age_range() {
+        assert_eq!(Settings::default().lesson_max_age_days, 60);
+        assert!(apply_patch(&Settings::default(), &json!({"lessonMaxAgeDays": 13})).is_err());
+        assert!(apply_patch(&Settings::default(), &json!({"lessonMaxAgeDays": 180})).is_ok());
     }
 
     #[test]

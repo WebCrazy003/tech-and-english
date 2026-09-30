@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router";
-import { api, type ArticleListItem } from "../lib/api";
+import { api, isLearning, type ArticleListItem } from "../lib/api";
 import { timeAgo } from "../lib/format";
 import { toast, toastError } from "../stores/toast";
 import ScoreChip from "./ScoreChip";
@@ -42,6 +42,11 @@ export default function ArticleRow({ a, onChange }: { a: ArticleListItem; onChan
                 ▲ {a.hnPoints} · 💬 {a.hnComments ?? 0}
               </span>
             </>
+          )}
+          {isLearning(a) && (
+            <span className={`${styles.chip} ${styles.learnChip}`} title="Learning material: a tutorial, guide or explainer">
+              📘 Learn
+            </span>
           )}
           {a.topics.slice(0, 3).map((t) => (
             <span key={t} className={styles.chip}>

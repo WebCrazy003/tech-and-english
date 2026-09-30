@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Data Learning</title>
+    <link>https://learn.example.com/</link>
+    <description>Tutorials, news and spam about data engineering</description>
+    <item>
+      <title>How to build a data pipeline with Airflow: a step-by-step tutorial</title>
+      <link>https://learn.example.com/airflow-pipeline</link>
+      <description>Build your first DAG and schedule it.</description>
+      <pubDate>Sun, 20 Sep 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Kafka explained: a beginner's guide to streaming</title>
+      <link>https://learn.example.com/kafka-explained</link>
+      <description>Topics, partitions and consumers in simple words.</description>
+      <pubDate>Thu, 10 Sep 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Understanding dbt tests</title>
+      <link>https://learn.example.com/dbt-tests</link>
+      <description>Why data tests matter for every data pipeline.</description>
+      <pubDate>Mon, 28 Sep 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Snowflake announces new data engineering features</title>
+      <link>https://learn.example.com/snowflake-news</link>
+      <description>A data pipeline product launch.</description>
+      <pubDate>Tue, 29 Sep 2026 05:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Data engineering course in Hyderabad with placements | Airflow training</title>
+      <link>https://learn.example.com/course-spam</link>
+      <description>Learn data engineering.</description>
+      <pubDate>Tue, 29 Sep 2026 04:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>A guide to Kafka streams from 2025</title>
+      <link>https://learn.example.com/old-guide</link>
+      <description>Very old.</description>
+      <pubDate>Mon, 01 Jun 2026 08:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

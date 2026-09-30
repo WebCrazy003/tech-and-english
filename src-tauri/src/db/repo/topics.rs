@@ -16,6 +16,8 @@ pub struct Topic {
     pub enabled: bool,
     pub notify: bool,
     pub notify_threshold: Option<u8>,
+    /// Also find learning materials (tutorials, explainers) for this topic (P3).
+    pub learn: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -35,6 +37,8 @@ pub struct TopicInput {
     pub notify: bool,
     #[serde(default)]
     pub notify_threshold: Option<u8>,
+    #[serde(default)]
+    pub learn: bool,
 }
 
 fn default_priority() -> u8 {
@@ -44,7 +48,7 @@ fn default_true() -> bool {
     true
 }
 
-const COLS: &str = "id, name, keywords, excluded_keywords, priority, enabled, notify, notify_threshold";
+const COLS: &str = "id, name, keywords, excluded_keywords, priority, enabled, notify, notify_threshold, learn";
 
 fn from_row(r: &Row) -> rusqlite::Result<Topic> {
     Ok(Topic {
@@ -56,6 +60,7 @@ fn from_row(r: &Row) -> rusqlite::Result<Topic> {
         enabled: r.get(5)?,
         notify: r.get(6)?,
         notify_threshold: r.get(7)?,
+        learn: r.get(8)?,
     })
 }
 
@@ -122,7 +127,7 @@ pub fn upsert(conn: &Connection, input: &TopicInput, now: &str) -> AppResult<Top
         Some(id) => {
             let n = conn.execute(
                 "UPDATE topics SET name=?1, keywords=?2, excluded_keywords=?3, priority=?4, enabled=?5,
-                 notify=?6, notify_threshold=?7 WHERE id=?8",
+                 notify=?6, notify_threshold=?7, learn=?8 WHERE id=?9",
                 params![
                     t.name,
                     json_list(&t.keywords),
@@ -131,6 +136,7 @@ pub fn upsert(conn: &Connection, input: &TopicInput, now: &str) -> AppResult<Top
                     t.enabled,
                     t.notify,
                     t.notify_threshold,
+                    t.learn,
                     id
                 ],
             )?;
@@ -141,8 +147,8 @@ pub fn upsert(conn: &Connection, input: &TopicInput, now: &str) -> AppResult<Top
         }
         None => {
             conn.execute(
-                "INSERT INTO topics(name, keywords, excluded_keywords, priority, enabled, notify, notify_threshold, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO topics(name, keywords, excluded_keywords, priority, enabled, notify, notify_threshold, learn, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     t.name,
                     json_list(&t.keywords),
@@ -151,6 +157,7 @@ pub fn upsert(conn: &Connection, input: &TopicInput, now: &str) -> AppResult<Top
                     t.enabled,
                     t.notify,
                     t.notify_threshold,
+                    t.learn,
                     now
                 ],
             )?;
@@ -180,6 +187,7 @@ mod tests {
             enabled: true,
             notify: false,
             notify_threshold: None,
+            learn: false,
         }
     }
 
@@ -196,9 +204,12 @@ mod tests {
             assert_eq!(t.keywords, vec!["LLM", "agent"]);
             assert!(upsert(c, &input("ai", &["x"]), "t").is_err(), "duplicate name");
             assert!(upsert(c, &input("Empty", &[]), "t").is_err(), "needs keywords");
+            assert!(!t.learn);
             let mut edit = input("AI 2", &["x"]);
             edit.id = Some(t.id);
-            assert_eq!(upsert(c, &edit, "t")?.name, "AI 2");
+            edit.learn = true;
+            let saved = upsert(c, &edit, "t")?;
+            assert_eq!((saved.name.as_str(), saved.learn), ("AI 2", true));
             delete(c, t.id)?;
             assert!(list(c)?.is_empty());
             Ok(())

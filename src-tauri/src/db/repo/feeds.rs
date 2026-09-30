@@ -16,6 +16,8 @@ pub struct Feed {
     pub last_fetched_at: Option<String>,
     pub last_error: Option<String>,
     pub consecutive_failures: u32,
+    /// This source mostly publishes learning material (P3).
+    pub learning: bool,
     #[serde(skip)]
     pub etag: Option<String>,
     #[serde(skip)]
@@ -34,6 +36,8 @@ pub struct FeedInput {
     pub source_weight: f64,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub learning: bool,
 }
 
 fn default_kind() -> String {
@@ -47,7 +51,7 @@ fn default_true() -> bool {
 }
 
 const COLS: &str = "id, kind, name, url, source_weight, enabled, last_fetched_at, last_error,
-                    consecutive_failures, etag, last_modified";
+                    consecutive_failures, etag, last_modified, learning";
 
 fn from_row(r: &Row) -> rusqlite::Result<Feed> {
     Ok(Feed {
@@ -62,6 +66,7 @@ fn from_row(r: &Row) -> rusqlite::Result<Feed> {
         consecutive_failures: r.get(8)?,
         etag: r.get(9)?,
         last_modified: r.get(10)?,
+        learning: r.get(11)?,
     })
 }
 
@@ -124,8 +129,8 @@ pub fn upsert(conn: &Connection, input: &FeedInput, now: &str) -> AppResult<Feed
     let id = match f.id {
         Some(id) => {
             let n = conn.execute(
-                "UPDATE feeds SET name=?1, url=?2, source_weight=?3, enabled=?4 WHERE id=?5",
-                params![f.name, f.url, f.source_weight, f.enabled, id],
+                "UPDATE feeds SET name=?1, url=?2, source_weight=?3, enabled=?4, learning=?5 WHERE id=?6",
+                params![f.name, f.url, f.source_weight, f.enabled, f.learning, id],
             )?;
             if n == 0 {
                 return Err(AppError::NotFound(format!("feed {id}")));
@@ -134,8 +139,8 @@ pub fn upsert(conn: &Connection, input: &FeedInput, now: &str) -> AppResult<Feed
         }
         None => {
             conn.execute(
-                "INSERT INTO feeds(kind, name, url, source_weight, enabled, created_at) VALUES (?1,?2,?3,?4,?5,?6)",
-                params![f.kind, f.name, f.url, f.source_weight, f.enabled, now],
+                "INSERT INTO feeds(kind, name, url, source_weight, enabled, learning, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![f.kind, f.name, f.url, f.source_weight, f.enabled, f.learning, now],
             )?;
             conn.last_insert_rowid()
         }

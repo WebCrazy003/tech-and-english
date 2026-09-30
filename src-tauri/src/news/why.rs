@@ -1,4 +1,4 @@
-//! Template "why you may find it interesting" text (P1). P3 may replace it with LLM text.
+//! Template "why you may find it interesting" text (P1), and "why this lesson" (P3).
 
 /// `topics`: (name, relevance), any order.
 pub fn template(topics: &[(String, f64)], hn_points: Option<i64>, source_affinity: f64) -> String {
@@ -22,9 +22,28 @@ pub fn template(topics: &[(String, f64)], hn_points: Option<i64>, source_affinit
     }
 }
 
+/// "Tutorial · Data Engineering · from a learning source".
+pub fn lesson(kind_label: &str, learn_topic: Option<&str>, from_learning_source: bool) -> String {
+    let mut parts = vec![kind_label.to_string()];
+    parts.extend(learn_topic.map(str::to_string));
+    if from_learning_source {
+        parts.push("from a learning source".into());
+    }
+    parts.join(" · ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lesson_parts() {
+        assert_eq!(
+            lesson("Tutorial", Some("Data Engineering"), true),
+            "Tutorial · Data Engineering · from a learning source"
+        );
+        assert_eq!(lesson("Guide", Some("Python"), false), "Guide · Python");
+    }
 
     #[test]
     fn builds_parts() {

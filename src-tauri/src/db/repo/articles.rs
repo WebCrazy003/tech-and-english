@@ -114,7 +114,6 @@ pub fn set_source_name(conn: &Connection, id: i64, name: &str) -> AppResult<()> 
     Ok(())
 }
 
-/// Title and description, used for topic matching.
 /// Title, and description plus the first 500 chars of the body (if extracted), for topic matching.
 pub fn match_text(conn: &Connection, id: i64) -> AppResult<(String, Option<String>)> {
     let (title, desc, body): (String, Option<String>, Option<String>) = conn.query_row(
@@ -208,6 +207,117 @@ pub fn scoring_rows(conn: &Connection, since: &str) -> AppResult<Vec<ScoringRow>
     Ok(rows)
 }
 
+// ---------------------------------------------------------------- learning (P3)
+
+/// (title, description, body word count, any source feed is a learning source).
+pub fn learning_inputs(conn: &Connection, id: i64) -> AppResult<(String, Option<String>, Option<u32>, bool)> {
+    Ok(conn.query_row(
+        "SELECT a.title, a.description, a.word_count,
+           EXISTS(SELECT 1 FROM article_sources s JOIN feeds f ON f.id = s.feed_id
+                  WHERE s.article_id = a.id AND f.learning = 1)
+         FROM articles a WHERE a.id = ?1",
+        [id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )?)
+}
+
+pub fn set_learning_score(conn: &Connection, id: i64, score: f64) -> AppResult<()> {
+    conn.execute(
+        "UPDATE articles SET learning_score = ?1 WHERE id = ?2",
+        params![score, id],
+    )?;
+    Ok(())
+}
+
+/// Articles of one feed discovered at or after `since`.
+pub fn ids_for_feed_since(conn: &Connection, feed_id: i64, since: &str) -> AppResult<Vec<i64>> {
+    let mut st = conn.prepare(
+        "SELECT a.id FROM articles a JOIN article_sources s ON s.article_id = a.id
+         WHERE s.feed_id = ?1 AND a.discovered_at >= ?2",
+    )?;
+    let rows = st
+        .query_map(params![feed_id, since], |r| r.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone)]
+pub struct LessonRow {
+    pub id: i64,
+    pub learning_score: f64,
+    /// Max relevance over enabled topics with `learn = 1`.
+    pub learn_relevance: f64,
+    pub primary_topic_id: Option<i64>,
+    pub hn_points: Option<i64>,
+    pub hn_comments: Option<i64>,
+    pub source_weight: f64,
+    pub source_ids: Vec<i64>,
+}
+
+/// Visible learning articles (score ≥ `min_learning`) discovered at or after `since`.
+pub fn lesson_rows(conn: &Connection, since: &str, min_learning: f64) -> AppResult<Vec<LessonRow>> {
+    let mut st = conn.prepare(
+        "SELECT a.id, a.learning_score, a.primary_topic_id, a.hn_points, a.hn_comments,
+           COALESCE((SELECT MAX(at.relevance) FROM article_topics at JOIN topics t ON t.id = at.topic_id
+                     WHERE at.article_id = a.id AND t.learn = 1 AND t.enabled = 1), 0),
+           COALESCE((SELECT MAX(f.source_weight) FROM article_sources s JOIN feeds f ON f.id = s.feed_id
+                     WHERE s.article_id = a.id), 0.5),
+           (SELECT group_concat(feed_id) FROM article_sources WHERE article_id = a.id)
+         FROM articles a WHERE a.discovered_at >= ?1 AND a.hidden = 0 AND a.learning_score >= ?2",
+    )?;
+    let rows = st
+        .query_map(params![since, min_learning], |r| {
+            let ids: Option<String> = r.get(7)?;
+            Ok(LessonRow {
+                id: r.get(0)?,
+                learning_score: r.get(1)?,
+                primary_topic_id: r.get(2)?,
+                hn_points: r.get(3)?,
+                hn_comments: r.get(4)?,
+                learn_relevance: r.get(5)?,
+                source_weight: r.get(6)?,
+                source_ids: ids
+                    .map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
+                    .unwrap_or_default(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn ids_without_learning_score(conn: &Connection) -> AppResult<Vec<i64>> {
+    let mut st = conn.prepare("SELECT id FROM articles WHERE learning_score IS NULL")?;
+    let rows = st.query_map([], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Learning articles (score ≥ `min_learning`) discovered at or after `since`.
+pub fn learning_ids_since(conn: &Connection, since: &str, min_learning: f64) -> AppResult<Vec<i64>> {
+    let mut st = conn.prepare("SELECT id FROM articles WHERE discovered_at >= ?1 AND learning_score >= ?2")?;
+    let rows = st
+        .query_map(params![since, min_learning], |r| r.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn set_lesson_score(conn: &Connection, id: i64, score: f64) -> AppResult<()> {
+    conn.execute(
+        "UPDATE articles SET lesson_score = ?1 WHERE id = ?2",
+        params![score, id],
+    )?;
+    Ok(())
+}
+
+/// Articles that are no longer learning material lose their lesson score.
+pub fn clear_stale_lesson_scores(conn: &Connection, min_learning: f64) -> AppResult<()> {
+    conn.execute(
+        "UPDATE articles SET lesson_score = NULL
+         WHERE lesson_score IS NOT NULL AND (learning_score IS NULL OR learning_score < ?1)",
+        [min_learning],
+    )?;
+    Ok(())
+}
+
 pub fn update_score(conn: &Connection, id: i64, b: &ScoreBreakdown, now: &str) -> AppResult<()> {
     conn.execute(
         "UPDATE articles SET score = ?1, score_breakdown = ?2, scored_at = ?3 WHERE id = ?4",
@@ -256,6 +366,8 @@ pub struct ArticleListItem {
     /// "easy" | "medium" | "hard", once the body is extracted
     pub difficulty: Option<String>,
     pub reading_minutes: Option<u32>,
+    /// 0..1; ≥ 0.5 means learning material (P3).
+    pub learning_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -265,6 +377,8 @@ pub struct ArticleFilter {
     pub feed_id: Option<i64>,
     pub unread_only: bool,
     pub saved_only: bool,
+    /// Only learning material (`learning_score ≥ 0.5`).
+    pub learning_only: bool,
     pub min_score: Option<f64>,
     pub query: Option<String>,
     /// Only articles discovered at or after this time (RFC 3339).
@@ -280,7 +394,7 @@ pub struct Page<T> {
 
 const ITEM_SELECT: &str = "SELECT a.id, a.url, a.title, a.source_name, a.description, a.published_at, a.discovered_at,
     t.name, a.score, a.score_breakdown, a.hn_id, a.hn_points, a.hn_comments, a.read_status, a.saved, a.hidden,
-    a.body_status, a.difficulty, a.word_count
+    a.body_status, a.difficulty, a.word_count, a.learning_score
     FROM articles a LEFT JOIN topics t ON t.id = a.primary_topic_id";
 
 fn item_from_row(r: &Row) -> rusqlite::Result<ArticleListItem> {
@@ -308,6 +422,7 @@ fn item_from_row(r: &Row) -> rusqlite::Result<ArticleListItem> {
         reading_minutes: r
             .get::<_, Option<u32>>(18)?
             .map(crate::news::difficulty::reading_minutes),
+        learning_score: r.get(19)?,
     })
 }
 
@@ -373,6 +488,10 @@ pub fn list_items(
     }
     if f.saved_only {
         wh.push("a.saved = 1".into());
+    }
+    if f.learning_only {
+        wh.push("a.learning_score >= ?".into());
+        args.push(crate::news::learning::LESSON_THRESHOLD.into());
     }
     if let Some(m) = f.min_score {
         wh.push("a.score >= ?".into());

@@ -5,6 +5,8 @@ interface AppStore {
   settings: Settings | null;
   mode: Mode;
   pick: DailyPick | null;
+  /** Today's lesson (P3), or null when there is none. */
+  lesson: DailyPick | null;
   preview: ArticleListItem | null;
   /** Bumped on every news://updated so lists know to reload. */
   newsVersion: number;
@@ -19,6 +21,7 @@ export const useApp = create<AppStore>((set, get) => ({
   settings: null,
   mode: "standard",
   pick: null,
+  lesson: null,
   preview: null,
   newsVersion: 0,
   lastNewCount: 0,
@@ -29,9 +32,9 @@ export const useApp = create<AppStore>((set, get) => ({
     await get().refreshPick();
   },
   refreshPick: async () => {
-    const pick = await api.getTodayPick();
+    const [pick, lesson] = await Promise.all([api.getTodayPick(), api.getTodayLesson()]);
     const preview = pick ? null : await api.getPickPreview();
-    set({ pick, preview });
+    set({ pick, lesson, preview });
   },
   setMode: async (m) => {
     const mode = await api.setMode(m);
@@ -51,7 +54,9 @@ export function startAppStore(): void {
     useApp.setState((st) => ({ newsVersion: st.newsVersion + 1, lastNewCount: p.newCount }));
     void useApp.getState().refreshPick();
   });
-  void onEvent<DailyPick>(EVENTS.pickChanged, (pick) => useApp.setState({ pick, preview: null }));
+  void onEvent<DailyPick>(EVENTS.pickChanged, (p) =>
+    useApp.setState(p.kind === "lesson" ? { lesson: p } : { pick: p, preview: null }),
+  );
   void onEvent<Mode>(EVENTS.modeChanged, (mode) => useApp.setState({ mode }));
   void onEvent<Settings>(EVENTS.settingsChanged, (settings) => {
     useApp.setState({ settings });

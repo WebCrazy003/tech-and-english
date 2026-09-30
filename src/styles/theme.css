@@ -15,6 +15,8 @@
   --bad-soft: #fdeaea;
   --hibernate: #6b5bd2;
   --hibernate-soft: #eeebfb;
+  --learn: #0f7b6c;
+  --learn-soft: #e3f4f1;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 16px rgba(0, 0, 0, 0.06);
   --radius: 10px;
   --radius-lg: 14px;
@@ -39,6 +41,8 @@
     --bad-soft: #3d2426;
     --hibernate: #9d8cff;
     --hibernate-soft: #2e2a47;
+    --learn: #4fd1b8;
+    --learn-soft: #1d3a36;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.3);
     color-scheme: dark;
   }

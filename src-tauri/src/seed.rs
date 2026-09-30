@@ -26,6 +26,9 @@ pub struct FeedSeed {
     /// Section shown in onboarding ("General tech", "AI", …).
     #[serde(default)]
     pub group: String,
+    /// Mostly publishes learning material (P3).
+    #[serde(default)]
+    pub learning: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,6 +64,7 @@ pub fn apply(conn: &Connection, topic_names: &[String], feed_urls: &[String], no
                 enabled: true,
                 notify: t.priority == 3,
                 notify_threshold: None,
+                learn: false,
             },
             now,
         )?;
@@ -79,6 +83,7 @@ pub fn apply(conn: &Connection, topic_names: &[String], feed_urls: &[String], no
                 url: f.url.clone(),
                 source_weight: f.source_weight,
                 enabled: true,
+                learning: f.learning,
             },
             now,
         )?;
@@ -104,6 +109,7 @@ mod tests {
                 url: f.url.clone(),
                 source_weight: f.source_weight,
                 enabled: true,
+                learning: f.learning,
             })
             .unwrap();
         }

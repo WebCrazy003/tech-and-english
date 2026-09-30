@@ -9,10 +9,12 @@ use crate::db::repo::articles::{self, ArticleFilter, ArticleListItem, Page};
 use crate::db::repo::feeds::{self, Feed, FeedInput};
 use crate::db::repo::topics::{self, Topic, TopicInput};
 use crate::error::AppError;
+use crate::news::discover::Discovery;
 use crate::news::model::InteractionKind;
 use crate::news::pick::DailyPick;
 use crate::news::rss::FeedTestResult;
 use crate::news::topics::{compile, match_topics};
+use crate::news::{AddFromExample, AddedFromExample};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -25,7 +27,29 @@ pub async fn upsert_topic(state: State<'_, AppState>, topic: TopicInput) -> CmdR
     let now = fmt_ts(state.clock.now());
     let t = state.db.call(move |c| topics::upsert(c, &topic, &now)).await?;
     state.news.reload_topics().await?;
+    if t.learn {
+        // Learn was switched on: today's lesson can be chosen now, not at the next tick.
+        spawn_ensure_today(&state);
+    }
     Ok(t)
+}
+
+fn spawn_ensure_today(state: &AppState) {
+    let pick = state.pick.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = pick.ensure_today().await {
+            tracing::warn!(error = %e, "daily pick after a settings change failed");
+        }
+    });
+}
+
+fn spawn_fetch(state: &AppState) {
+    let news = state.news.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = news.fetch_cycle(false).await {
+            tracing::warn!(error = %e, "fetch after adding feed failed");
+        }
+    });
 }
 
 #[tauri::command]
@@ -58,6 +82,7 @@ pub async fn preview_topic_matches(
         enabled: true,
         notify: false,
         notify_threshold: None,
+        learn: false,
     };
     state
         .db
@@ -94,16 +119,36 @@ pub async fn upsert_feed(state: State<'_, AppState>, feed: FeedInput) -> CmdResu
         state.news.test_feed(&checked.url).await?;
     }
     let now = fmt_ts(state.clock.now());
-    let saved = state.db.call(move |c| feeds::upsert(c, &checked, &now)).await?;
+    let saved = state
+        .db
+        .call(move |c| {
+            let before = checked.id.map(|id| feeds::get(c, id)).transpose()?;
+            Ok((feeds::upsert(c, &checked, &now)?, before.map(|f| f.learning)))
+        })
+        .await;
+    let (saved, learning_before) = saved?;
+    if learning_before.is_some_and(|b| b != saved.learning) {
+        state.news.recompute_learning_for_feed(saved.id).await?;
+    }
     if saved.last_fetched_at.is_none() && saved.enabled {
-        let news = state.news.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = news.fetch_cycle(false).await {
-                tracing::warn!(error = %e, "fetch after adding feed failed");
-            }
-        });
+        spawn_fetch(&state);
     }
     Ok(saved)
+}
+
+/// Find the feed of the site behind an example article URL (SPEC §7.12).
+#[tauri::command]
+pub async fn discover_feeds(state: State<'_, AppState>, url: String) -> CmdResult<Discovery> {
+    state.news.discover_feeds(&url).await
+}
+
+#[tauri::command]
+pub async fn add_feed_from_example(state: State<'_, AppState>, input: AddFromExample) -> CmdResult<AddedFromExample> {
+    let out = state.news.add_from_example(input).await?;
+    if out.feed.is_some() {
+        spawn_fetch(&state);
+    }
+    Ok(out)
 }
 
 #[tauri::command]
@@ -121,6 +166,7 @@ pub async fn test_feed(state: State<'_, AppState>, url: String) -> CmdResult<Fee
         url: url.clone(),
         source_weight: 0.5,
         enabled: true,
+        learning: false,
     })?;
     state.news.test_feed(&url).await
 }
@@ -202,6 +248,11 @@ pub async fn open_article(app: AppHandle, state: State<'_, AppState>, article_id
 #[tauri::command]
 pub async fn get_today_pick(state: State<'_, AppState>) -> CmdResult<Option<DailyPick>> {
     state.pick.today().await
+}
+
+#[tauri::command]
+pub async fn get_today_lesson(state: State<'_, AppState>) -> CmdResult<Option<DailyPick>> {
+    state.pick.today_lesson().await
 }
 
 #[tauri::command]

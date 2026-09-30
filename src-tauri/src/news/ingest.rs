@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::Connection;
 
+use super::learning::{LearningInput, learning_score};
 use super::model::RawItem;
 use super::normalize::{host_of, jaccard, looks_english, normalize_url, title_key, truncate_chars, word_set};
 use super::topics::{CompiledTopic, match_topics};
@@ -13,6 +14,7 @@ use crate::clock::fmt_ts;
 use crate::db::repo::articles::{self, NewArticle};
 use crate::db::repo::feeds::Feed;
 use crate::error::AppResult;
+use crate::settings::Settings;
 
 pub const DEDUPE_WINDOW_HOURS: i64 = 72;
 const JACCARD_DUPLICATE: f64 = 0.8;
@@ -67,6 +69,28 @@ fn source_name_for(feed: &Feed, raw: &RawItem) -> String {
 pub fn rematch(conn: &Connection, id: i64, topics: &[CompiledTopic]) -> AppResult<()> {
     let (title, desc) = articles::match_text(conn, id)?;
     articles::set_topics(conn, id, &match_topics(topics, &title, desc.as_deref()))
+}
+
+/// Recompute the learning score (SPEC §7.11) from the title, description, sources and body size.
+pub fn update_learning(conn: &Connection, id: i64) -> AppResult<f64> {
+    let (title, description, word_count, feed_learning) = articles::learning_inputs(conn, id)?;
+    let score = learning_score(&LearningInput {
+        title: &title,
+        description: description.as_deref(),
+        feed_learning,
+        word_count,
+    });
+    articles::set_learning_score(conn, id, score)?;
+    Ok(score)
+}
+
+/// Learning feeds keep older items, so the lesson pool has enough history (SPEC §7.11).
+pub fn max_age_days(feed: &Feed, settings: &Settings) -> u32 {
+    if feed.learning {
+        settings.lesson_max_age_days
+    } else {
+        settings.ingest_max_age_days
+    }
 }
 
 pub fn ingest(
@@ -165,6 +189,7 @@ pub fn ingest(
         };
         articles::add_source(conn, id, feed.id, &raw.url, &now_s)?;
         rematch(conn, id, topics)?;
+        update_learning(conn, id)?;
     }
     Ok(stats)
 }
@@ -213,6 +238,7 @@ mod tests {
                 url: "https://example.com/feed".into(),
                 source_weight: 0.5,
                 enabled: true,
+                learning: false,
             },
             now,
         )
@@ -226,6 +252,7 @@ mod tests {
                 url: "hn:top".into(),
                 source_weight: 0.5,
                 enabled: true,
+                learning: false,
             },
             now,
         )
@@ -241,6 +268,7 @@ mod tests {
                 enabled: true,
                 notify: false,
                 notify_threshold: None,
+                learn: false,
             },
             now,
         )

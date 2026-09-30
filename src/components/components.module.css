@@ -169,6 +169,11 @@
   font-weight: 600;
 }
 
+.learnChip {
+  background: var(--learn-soft);
+  color: var(--learn);
+}
+
 /* Keyword chips input */
 .kwBox {
   display: flex;

@@ -1,7 +1,9 @@
 pub mod body;
 pub mod difficulty;
+pub mod discover;
 pub mod hackernews;
 pub mod ingest;
+pub mod learning;
 pub mod model;
 pub mod normalize;
 pub mod pick;
@@ -30,14 +32,19 @@ use crate::http::HttpClient;
 use crate::mode::{Mode, ModeManager};
 use crate::settings::SettingsStore;
 use ingest::RecentTitles;
+use learning::LESSON_THRESHOLD;
 use model::InteractionKind;
 use normalize::{jaccard, word_set};
-use ranking::{RankInputs, affinity_deltas};
+use ranking::{LessonInputs, RankInputs, affinity_deltas};
 use source::FetchCtx;
 use topics::CompiledTopic;
 
 /// Articles discovered within this window are rescored every cycle (freshness changes).
 pub const RESCORE_WINDOW_DAYS: i64 = 7;
+/// Learning articles are kept and rescored for lessons this long (SPEC §7.11).
+pub const LESSON_WINDOW_DAYS: i64 = retention::DELETE_AFTER_DAYS;
+/// Example articles and feeds added from an example get this source weight.
+pub const EXAMPLE_SOURCE_WEIGHT: f64 = 0.6;
 const MAX_BACKOFF: Duration = Duration::hours(6);
 const OFFLINE_RETRY_SECS: [i64; 3] = [30, 60, 120];
 
@@ -106,15 +113,18 @@ impl NewsService {
         self.topics.read().unwrap().clone()
     }
 
-    /// Recompile topics after an edit, re-match recent articles and rescore.
+    /// Recompile topics after an edit, re-match recent (and learning) articles and rescore.
     pub async fn reload_topics(&self) -> AppResult<()> {
         let list = self.db.call(|c| topics_repo::list(c)).await?;
         let compiled = Arc::new(topics::compile(&list));
         *self.topics.write().unwrap() = compiled.clone();
-        let since = fmt_ts(self.clock.now() - Duration::days(RESCORE_WINDOW_DAYS));
+        let now = self.clock.now();
+        let since = fmt_ts(now - Duration::days(RESCORE_WINDOW_DAYS));
+        let lesson_since = fmt_ts(now - Duration::days(LESSON_WINDOW_DAYS));
         self.db
             .tx(move |tx| {
-                let ids = articles::ids_discovered_since(tx, &since)?;
+                let mut ids = articles::ids_discovered_since(tx, &since)?;
+                ids.extend(articles::learning_ids_since(tx, &lesson_since, LESSON_THRESHOLD)?);
                 ingest::rematch_all(tx, &ids, &compiled)
             })
             .await?;
@@ -188,7 +198,6 @@ impl NewsService {
         *self.offline.lock().unwrap() = OfflineState::default();
 
         let topics = self.compiled_topics();
-        let max_age = settings.ingest_max_age_days;
         let (new_count, ok_count) = self
             .db
             .tx(move |tx| {
@@ -198,6 +207,7 @@ impl NewsService {
                 for (feed, r) in results {
                     match r {
                         Ok(res) => {
+                            let max_age = ingest::max_age_days(&feed, &settings);
                             let stats = ingest::ingest(tx, &feed, &res.items, &topics, &mut recent, now, max_age)?;
                             feeds::record_success(
                                 tx,
@@ -283,9 +293,159 @@ impl NewsService {
                     );
                     articles::update_score(tx, r.id, &b, &now_s)?;
                 }
+
+                // Lessons (P3): only learning material, 60-day window, no freshness.
+                articles::clear_stale_lesson_scores(tx, LESSON_THRESHOLD)?;
+                let lesson_since = fmt_ts(now - Duration::days(LESSON_WINDOW_DAYS));
+                for r in articles::lesson_rows(tx, &lesson_since, LESSON_THRESHOLD)? {
+                    let topic_aff = r
+                        .primary_topic_id
+                        .and_then(|t| aff.get(&("topic".to_string(), t)).copied())
+                        .unwrap_or(0.0);
+                    let source_aff = r
+                        .source_ids
+                        .iter()
+                        .filter_map(|f| aff.get(&("source".to_string(), *f)).copied())
+                        .fold(None, |m: Option<f64>, v| Some(m.map_or(v, |m| m.max(v))))
+                        .unwrap_or(0.0);
+                    let s = ranking::lesson_score(&LessonInputs {
+                        learn_relevance: r.learn_relevance,
+                        learning_score: r.learning_score,
+                        source_weight: r.source_weight,
+                        hn_points: r.hn_points,
+                        hn_comments: r.hn_comments,
+                        topic_affinity: topic_aff,
+                        source_affinity: source_aff,
+                    });
+                    articles::set_lesson_score(tx, r.id, s)?;
+                }
                 Ok(())
             })
             .await
+    }
+
+    /// A feed's Learning switch changed: recompute its articles' learning scores (60 days).
+    pub async fn recompute_learning_for_feed(&self, feed_id: i64) -> AppResult<()> {
+        let since = fmt_ts(self.clock.now() - Duration::days(LESSON_WINDOW_DAYS));
+        let n = self
+            .db
+            .tx(move |tx| {
+                let ids = articles::ids_for_feed_since(tx, feed_id, &since)?;
+                for id in &ids {
+                    ingest::update_learning(tx, *id)?;
+                }
+                Ok(ids.len())
+            })
+            .await?;
+        tracing::debug!(feed = feed_id, articles = n, "learning scores recomputed");
+        self.rescore().await?;
+        events::emit(self.events.as_ref(), events::NEWS_UPDATED, &json!({ "newCount": 0 }));
+        Ok(())
+    }
+
+    /// Give a learning score to articles that have none (stored before P3). Returns how many.
+    pub async fn backfill_learning(&self) -> AppResult<usize> {
+        let n = self
+            .db
+            .tx(|tx| {
+                let ids = articles::ids_without_learning_score(tx)?;
+                for id in &ids {
+                    ingest::update_learning(tx, *id)?;
+                }
+                Ok(ids.len())
+            })
+            .await?;
+        if n > 0 {
+            tracing::info!(articles = n, "learning scores backfilled");
+            self.rescore().await?;
+            events::emit(self.events.as_ref(), events::NEWS_UPDATED, &json!({ "newCount": 0 }));
+        }
+        Ok(n)
+    }
+
+    /// Find the feeds of the site behind an example URL (SPEC §7.12).
+    pub async fn discover_feeds(&self, url: &str) -> AppResult<discover::Discovery> {
+        let existing: Vec<String> = self
+            .db
+            .call(|c| Ok(feeds::list(c)?.into_iter().map(|f| f.url).collect()))
+            .await?;
+        let (page, candidates) = discover::discover(self.http.as_ref(), url, &existing).await?;
+        Ok(discover::Discovery { page, candidates })
+    }
+
+    /// Add the chosen feed and/or save the example article. The caller starts a fetch.
+    pub async fn add_from_example(&self, input: AddFromExample) -> AppResult<AddedFromExample> {
+        let feed_input = match input.feed_url.as_deref().map(str::trim).filter(|u| !u.is_empty()) {
+            Some(u) => {
+                let f = feeds::validate(&feeds::FeedInput {
+                    id: None,
+                    kind: "rss".into(),
+                    name: input.name.clone(),
+                    url: u.to_string(),
+                    source_weight: EXAMPLE_SOURCE_WEIGHT,
+                    enabled: true,
+                    learning: input.learning,
+                })?;
+                let norm = normalize::normalize_url(&f.url)?;
+                let dup = self
+                    .db
+                    .call(move |c| {
+                        Ok(feeds::list(c)?
+                            .iter()
+                            .any(|x| normalize::normalize_url(&x.url).is_ok_and(|n| n == norm)))
+                    })
+                    .await?;
+                if dup {
+                    return Err(AppError::Invalid("This source is already in your list.".into()));
+                }
+                Some(f)
+            }
+            None => None,
+        };
+        if feed_input.is_none() && !input.save_article {
+            return Err(AppError::Invalid("Choose a feed, or save the article".into()));
+        }
+        let page = if input.save_article {
+            match discover::fetch_page(self.http.as_ref(), &input.url).await? {
+                discover::Fetched::Page(info) => Some(info.page),
+                discover::Fetched::Feed(..) => {
+                    return Err(AppError::Invalid("This link is a feed, not an article".into()));
+                }
+            }
+        } else {
+            None
+        };
+        let now = self.clock.now();
+        let topics = self.compiled_topics();
+        let out = self
+            .db
+            .tx(move |tx| {
+                let now_s = fmt_ts(now);
+                let feed = feed_input.map(|f| feeds::upsert(tx, &f, &now_s)).transpose()?;
+                let article = page
+                    .map(|p| save_example_article(tx, &p, &topics, &now_s))
+                    .transpose()?;
+                Ok(AddedFromExample { feed, article })
+            })
+            .await?;
+        tracing::info!(
+            feed = out.feed.as_ref().map(|f| f.id),
+            article = out.article.as_ref().map(|a| a.id),
+            "added from example"
+        );
+        self.rescore().await?;
+        events::emit(self.events.as_ref(), events::NEWS_UPDATED, &json!({ "newCount": 0 }));
+        match out.article {
+            Some(a) => {
+                let id = a.id;
+                let article = self.db.call(move |c| articles::get_item(c, id)).await?;
+                Ok(AddedFromExample {
+                    article: Some(article),
+                    ..out
+                })
+            }
+            None => Ok(out),
+        }
     }
 
     /// Record a user interaction, apply affinity changes (SPEC §7.7) and rescore.
@@ -362,6 +522,8 @@ impl NewsService {
                 if keep {
                     ingest::rematch(tx, id, &topics)?;
                 }
+                // The word count is known now (long bodies get a small bonus).
+                ingest::update_learning(tx, id)?;
                 articles::get_item(tx, id)
             })
             .await?;
@@ -374,6 +536,66 @@ impl NewsService {
         );
         Ok(item)
     }
+}
+
+/// Store the example page as a saved article (no feed source), or mark an existing one saved.
+fn save_example_article(
+    conn: &rusqlite::Connection,
+    p: &discover::ExamplePage,
+    topics: &[CompiledTopic],
+    now: &str,
+) -> AppResult<articles::ArticleListItem> {
+    let norm = normalize::normalize_url(&p.url)?;
+    let id = match articles::find_id_by_normalized_url(conn, &norm)? {
+        Some(id) => id,
+        None => {
+            let title = normalize::truncate_chars(&p.title, 300);
+            let key = match normalize::title_key(&title, &p.site_name) {
+                k if k.is_empty() => norm.clone(),
+                k => k,
+            };
+            let id = articles::insert(
+                conn,
+                &articles::NewArticle {
+                    url: p.url.clone(),
+                    normalized_url: norm,
+                    title,
+                    title_key: key,
+                    source_name: p.site_name.clone(),
+                    author: None,
+                    description: p.description.clone(),
+                    published_at: p.published_at.clone(),
+                    discovered_at: now.to_string(),
+                    hn: None,
+                },
+            )?;
+            ingest::rematch(conn, id, topics)?;
+            ingest::update_learning(conn, id)?;
+            id
+        }
+    };
+    articles::set_saved(conn, id, true)?;
+    articles::get_item(conn, id)
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddFromExample {
+    pub url: String,
+    pub feed_url: Option<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub learning: bool,
+    #[serde(default)]
+    pub save_article: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddedFromExample {
+    pub feed: Option<Feed>,
+    pub article: Option<articles::ArticleListItem>,
 }
 
 /// What the frontend sends after running Readability (P2 dev spec §3).
@@ -437,6 +659,10 @@ pub(crate) mod testutil {
     }
 
     pub async fn add_topic(h: &Harness, name: &str, kws: &[&str]) -> i64 {
+        add_topic_learn(h, name, kws, false).await
+    }
+
+    pub async fn add_topic_learn(h: &Harness, name: &str, kws: &[&str], learn: bool) -> i64 {
         let input = TopicInput {
             id: None,
             name: name.into(),
@@ -446,6 +672,7 @@ pub(crate) mod testutil {
             enabled: true,
             notify: true,
             notify_threshold: None,
+            learn,
         };
         let id =
             h.db.call(move |c| Ok(topics_repo::upsert(c, &input, "2026-01-01T00:00:00Z")?.id))
@@ -456,6 +683,10 @@ pub(crate) mod testutil {
     }
 
     pub async fn add_feed(h: &Harness, kind: &str, url: &str) -> i64 {
+        add_feed_learning(h, kind, url, false).await
+    }
+
+    pub async fn add_feed_learning(h: &Harness, kind: &str, url: &str, learning: bool) -> i64 {
         let input = FeedInput {
             id: None,
             kind: kind.into(),
@@ -463,6 +694,7 @@ pub(crate) mod testutil {
             url: url.into(),
             source_weight: 0.5,
             enabled: true,
+            learning,
         };
         h.db.call(move |c| Ok(feeds::upsert(c, &input, "2026-01-01T00:00:00Z")?.id))
             .await
@@ -490,6 +722,7 @@ mod tests {
             last_fetched_at: None,
             last_error: None,
             consecutive_failures: 0,
+            learning: false,
             etag: None,
             last_modified: None,
         };
@@ -577,6 +810,182 @@ mod tests {
         assert!(f.last_fetched_at.is_none(), "still due, retried soon");
         // Retry is suppressed until the backoff passes.
         assert_eq!(h.news.fetch_cycle(false).await.unwrap(), 0);
+    }
+
+    const LEARNING_XML: &str = include_str!("../../tests/fixtures/rss_learning.xml");
+
+    async fn serve(body: &str) -> MockServer {
+        let s = MockServer::start().await;
+        Mock::given(path("/feed"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&s)
+            .await;
+        s
+    }
+
+    async fn titles(h: &Harness) -> Vec<String> {
+        let mut t: Vec<String> =
+            h.db.call(|c| Ok(articles::list_items(c, &Default::default(), None, 50)?.items))
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|a| a.title)
+                .collect();
+        t.sort();
+        t
+    }
+
+    #[tokio::test]
+    async fn learning_feeds_keep_older_items() {
+        let s = serve(LEARNING_XML).await;
+        let url = format!("{}/feed", s.uri());
+        // Normal feed: 7 days.
+        let h = harness("2026-09-29T09:00:00Z").await;
+        add_feed(&h, "rss", &url).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        assert_eq!(titles(&h).await.len(), 3, "{:?}", titles(&h).await);
+        // Learning feed: up to lessonMaxAgeDays (60), so the 9- and 19-day-old tutorials stay.
+        let h = harness("2026-09-29T09:00:00Z").await;
+        add_feed_learning(&h, "rss", &url, true).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        let t = titles(&h).await;
+        assert_eq!(t.len(), 5, "{t:?}");
+        assert!(t.iter().any(|x| x.starts_with("Kafka explained")));
+        assert!(!t.iter().any(|x| x.contains("from 2025")), "120 days is too old");
+    }
+
+    async fn learning_score_of(h: &Harness, title: &'static str) -> f64 {
+        h.db.call(move |c| {
+            Ok(
+                c.query_row("SELECT learning_score FROM articles WHERE title = ?1", [title], |r| {
+                    r.get(0)
+                })?,
+            )
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn learning_scores_follow_the_feed_switch() {
+        let s = serve(LEARNING_XML).await;
+        let h = harness("2026-09-29T09:00:00Z").await;
+        add_topic_learn(&h, "Data Engineering", &["data pipeline", "dbt", "Kafka"], true).await;
+        let fid = add_feed(&h, "rss", &format!("{}/feed", s.uri())).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        let dbt = "Understanding dbt tests";
+        assert!((learning_score_of(&h, dbt).await - 0.5).abs() < 1e-9);
+        assert_eq!(
+            learning_score_of(&h, "Snowflake announces new data engineering features").await,
+            0.0
+        );
+
+        h.db.call(move |c| Ok(c.execute("UPDATE feeds SET learning = 1 WHERE id = ?1", [fid])?))
+            .await
+            .unwrap();
+        h.news.recompute_learning_for_feed(fid).await.unwrap();
+        assert!((learning_score_of(&h, dbt).await - 0.85).abs() < 1e-9);
+        let lesson: Option<f64> =
+            h.db.call(move |c| {
+                Ok(
+                    c.query_row("SELECT lesson_score FROM articles WHERE title = ?1", [dbt], |r| {
+                        r.get(0)
+                    })?,
+                )
+            })
+            .await
+            .unwrap();
+        assert!(
+            lesson.is_some_and(|l| l > 50.0),
+            "lesson score after rescore: {lesson:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn articles_from_before_the_upgrade_are_backfilled_once() {
+        let h = harness("2026-09-29T09:00:00Z").await;
+        h.db.call(|c| {
+            Ok(c.execute(
+                "INSERT INTO articles(url, normalized_url, title, title_key, source_name, discovered_at)
+                 VALUES ('https://a/1', 'https://a/1', 'Iceberg explained: a beginner guide', 'k', 's', '2026-09-20T00:00:00Z')",
+                [],
+            )?)
+        })
+        .await
+        .unwrap();
+        assert_eq!(h.news.backfill_learning().await.unwrap(), 1);
+        assert!((learning_score_of(&h, "Iceberg explained: a beginner guide").await - 0.75).abs() < 1e-9);
+        assert_eq!(h.news.backfill_learning().await.unwrap(), 0, "only once");
+    }
+
+    #[tokio::test]
+    async fn add_from_example_saves_article_and_feed() {
+        let s = serve(LEARNING_XML).await;
+        Mock::given(path("/blog/kafka-intro"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                r#"<html><head><title>Kafka 101: a beginner's guide | Data Blog</title>
+                   <meta property="og:site_name" content="Data Blog">
+                   <meta name="description" content="Streaming with Kafka, step by step.">
+                   <link rel="alternate" type="application/rss+xml" href="/feed"></head><body>x</body></html>"#,
+                "text/html",
+            ))
+            .mount(&s)
+            .await;
+        let h = harness("2026-09-29T09:00:00Z").await;
+        add_topic_learn(&h, "Data Engineering", &["Kafka", "streaming"], true).await;
+        let page = format!("{}/blog/kafka-intro", s.uri());
+
+        let found = h.news.discover_feeds(&page).await.unwrap();
+        assert_eq!(found.candidates.len(), 1);
+        assert_eq!(found.page.site_name, "Data Blog");
+
+        let input = |feed: Option<String>, save: bool| AddFromExample {
+            url: page.clone(),
+            feed_url: feed,
+            name: "Data Learning".into(),
+            learning: true,
+            save_article: save,
+        };
+        let out = h
+            .news
+            .add_from_example(input(Some(found.candidates[0].url.clone()), true))
+            .await
+            .unwrap();
+        let feed = out.feed.unwrap();
+        assert!(feed.learning);
+        assert!((feed.source_weight - EXAMPLE_SOURCE_WEIGHT).abs() < 1e-9);
+        let a = out.article.unwrap();
+        assert!(a.saved);
+        assert_eq!(a.source_name, "Data Blog");
+        assert_eq!(a.topics, vec!["Data Engineering"]);
+        // 101 + beginner + guide in the title, "step by step" in the description; no feed source.
+        assert!((a.learning_score.unwrap() - 0.75).abs() < 1e-9);
+
+        // Once the body is extracted, the long-article bonus applies.
+        let text = "Kafka keeps streams of events in topics. ".repeat(200);
+        h.news
+            .save_article_body(SaveBody {
+                article_id: a.id,
+                text: Some(text),
+                html: Some("<p>…</p>".into()),
+                canonical_url: None,
+                paywall_hint: false,
+                failed: false,
+            })
+            .await
+            .unwrap();
+        let again = h.db.call(move |c| articles::get_item(c, a.id)).await.unwrap();
+        assert!((again.learning_score.unwrap() - 0.85).abs() < 1e-9);
+
+        let dup = h
+            .news
+            .add_from_example(input(Some(format!("{}/feed/", s.uri())), false))
+            .await
+            .unwrap_err();
+        assert_eq!(dup.to_string(), "This source is already in your list.");
+        let only_article = h.news.add_from_example(input(None, true)).await.unwrap();
+        assert_eq!(only_article.article.unwrap().id, a.id, "same article, not a copy");
+        assert!(h.news.add_from_example(input(None, false)).await.is_err());
     }
 
     #[tokio::test]

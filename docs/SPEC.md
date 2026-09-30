@@ -2,7 +2,7 @@
 
 - **Version:** 0.3 (implementation spec)
 - **Date:** 2026-09-29
-- **Status:** P1 done (v0.1.0). v0.3 adds learning materials, example sources, AI chat in the reader, dictionary meanings, and a new phase order.
+- **Status:** P1 (v0.1.0), P2 (v0.2.0) and P3 (v0.3.0) done. v0.3 adds learning materials, example sources, AI chat in the reader, dictionary meanings, and a new phase order.
 - **Dev specs:** [dev/README.md](dev/README.md) (per-phase implementation plans P1–P6)
 - **Based on:** the original product spec (v0.1), plus the review changes listed in §3
 
@@ -468,13 +468,17 @@ This job runs once a day.
 
 | Signal | Effect |
 |---|---|
-| Each distinct learning pattern in title/description: `how to`, `how … works`, `guide`, `tutorial`, `explained`, `explainer`, `introduction to`, `intro to`, `beginner`, `101`, `deep dive`, `what is`, `what are`, `understanding`, `step by step`, `from scratch`, `best practices`, `patterns`, `primer`, `cheat sheet`, `hands-on`, `walkthrough`, `fundamentals`, `lessons learned`, `vs` (comparisons) | +0.25 each (at most +0.75) |
+| Learning patterns: `how to`, `how … works`, `guide`, `tutorial`, `explained`, `explainer`, `introduction to`, `intro to`, `beginner`, `101`, `deep dive`, `what is`, `what are`, `understanding`, `step by step`, `from scratch`, `best practices`, `patterns`, `primer`, `cheat sheet`, `hands-on`, `walkthrough`, `fundamentals`, `lessons learned`, `vs` (comparisons) | The first pattern **in the title** counts +0.50. Every other distinct pattern (title or first 300 characters of the description) +0.20. Patterns only in the description: at most +0.40. All patterns together: at most +0.75. |
 | Feed has `learning = true` | +0.35 |
 | Body word count ≥ 1,200, once extracted (P2 Reader) | +0.10 |
-| News patterns: `announces`, `launches`, `raises`, `acquires`, `funding`, `now available`, `introducing`, `release notes`, `weekly roundup`, `this week in` | −0.30 |
-| Training-course spam: `course in <place>`, `training in`, `institute`, `certification training`, `bootcamp in`, `job guarantee` | score = 0 (never a lesson) |
+| News or opinion patterns **in the title**: `announce…`, `launch…`, `raises`, `acquires`, `funding`, `now available`, `generally available`, `is GA`, `introducing`, `released`, `release notes`, `roundup`, `this week in`, `the future of`, `podcast`, `episode` | −0.30 |
+| Spam (title or description): `certification training`, `job guarantee`, `placement assistance`, `with placements`, `who's hiring`, buying or selling accounts; or a course word (`training`, `course`, `classes`, `bootcamp`, `institute`, `academy`…) **together with a place** (`in Hyderabad`, `in Noida`, … `near me`) | score = 0 (never a lesson) |
 
-The score is clamped to 0–1. The patterns are kept in one list in code and unit-tested with real titles from the live feeds.
+The score is clamped to 0–1. The patterns are kept in one list in code (`news/learning.rs`) and unit-tested with real titles from the live feeds.
+
+> **Changed during P3.** The first draft gave every pattern +0.25. Then a plain "How to …" title from a normal feed scored 0.25 and could never be a lesson, which contradicted the test titles. News patterns are checked on the title only, because tutorials often mention a release in their description. "Training in" / "classes in" alone are not spam, because of real titles like "Distributed training in JAX" or "Data classes in Python".
+
+Articles stored before P3 get their learning score once, when the app starts after the upgrade.
 
 **Lesson eligibility:**
 - `learning_score ≥ 0.5`
@@ -536,6 +540,12 @@ In **Settings › News sources**, the user can paste the URL of an article or bl
    Each pattern is tried on the site root and on the article's parent path (e.g. `/blog/feed`).
 4. Validate every candidate with `test_feed` (§7.2). Show the valid ones with their title, item count and newest date. The user picks one. They can also switch on **Learning source**, and change the name.
 5. **Also save this article** (checked by default): the example article itself is stored and marked saved, so it can be read right away.
+
+Details:
+- Comment feeds and code-commit feeds (e.g. GitHub `…/commits/….atom`) are not offered.
+- The same feed found under two URLs (`/feed` and `/rss.xml`) is shown once.
+- If the pasted URL is itself a feed, it is offered directly (and there is no article to save).
+- Medium often refuses to show its pages to apps. Then the Medium feed URL is tried directly.
 
 Messages:
 - The feed is already in the list → "This source is already in your list."

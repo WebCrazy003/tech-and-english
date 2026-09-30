@@ -66,12 +66,6 @@
   align-items: center;
 }
 
-.twoCol {
-  display: grid;
-  grid-template-columns: 1fr 260px;
-  gap: 24px;
-  align-items: start;
-}
 
 .section {
   margin-top: 32px;
@@ -224,7 +218,7 @@
 /* Feeds */
 .feedRow {
   display: grid;
-  grid-template-columns: 22px 1fr 150px 34px;
+  grid-template-columns: 22px 1fr auto 150px 34px;
   gap: 12px;
   align-items: center;
   padding: 10px 16px;
@@ -331,4 +325,126 @@
   display: flex;
   gap: 8px;
   margin-top: 28px;
+}
+
+/* P3: learning */
+.tip {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editor label.switchRow,
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 400;
+  margin: 0;
+}
+.switchRow input {
+  margin-top: 3px;
+}
+.switchRow .fieldHelp {
+  display: block;
+}
+.learningToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.examplePage {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.candidate {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.candidate > span {
+  display: flex;
+  flex-direction: column;
+}
+.candidate input {
+  width: auto !important;
+  margin-top: 3px;
+}
+.candidateOff {
+  opacity: 0.6;
+}
+.addFeed .switchRow input {
+  width: auto;
+}
+
+/* Today: story + lesson cards side by side, stacked when narrow */
+.picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+@media (max-width: 760px) {
+  .picks {
+    grid-template-columns: 1fr;
+  }
+}
+.pickCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pickCard .pickTitle {
+  font-size: 19px;
+}
+.pickCard .actions {
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 16px;
+}
+.pickCard .desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.whyLesson {
+  background: var(--learn-soft);
+}
+.learnChip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--learn-soft);
+  color: var(--learn);
+  font-size: 12px;
+  font-weight: 600;
+}
+.noLesson p {
+  margin: 10px 0 0;
+}
+.noLesson button {
+  margin-top: 14px;
+  align-self: flex-start;
+}
+.scoreDetails {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.scoreDetails summary {
+  cursor: pointer;
 }

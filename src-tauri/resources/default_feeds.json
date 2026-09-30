@@ -165,7 +165,8 @@
     "name": "Ahead of AI (Sebastian Raschka)",
     "url": "https://magazine.sebastianraschka.com/feed",
     "sourceWeight": 0.6,
-    "group": "AI"
+    "group": "AI",
+    "learning": true
   },
   {
     "kind": "rss",
@@ -193,14 +194,16 @@
     "name": "dbt Labs Blog",
     "url": "https://www.getdbt.com/blog/rss.xml",
     "sourceWeight": 0.6,
-    "group": "Data engineering"
+    "group": "Data engineering",
+    "learning": true
   },
   {
     "kind": "rss",
     "name": "DuckDB Blog",
     "url": "https://duckdb.org/feed.xml",
     "sourceWeight": 0.6,
-    "group": "Data engineering"
+    "group": "Data engineering",
+    "learning": true
   },
   {
     "kind": "rss",
@@ -214,7 +217,8 @@
     "name": "Seattle Data Guy",
     "url": "https://seattledataguy.substack.com/feed",
     "sourceWeight": 0.6,
-    "group": "Data engineering"
+    "group": "Data engineering",
+    "learning": true
   },
   {
     "kind": "rss",
@@ -228,6 +232,79 @@
     "name": "Towards Data Science",
     "url": "https://towardsdatascience.com/feed",
     "sourceWeight": 0.35,
-    "group": "Data engineering"
+    "group": "Data engineering",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Practical Data Modeling (Joe Reis)",
+    "url": "https://practicaldatamodeling.substack.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Data Engineering Central",
+    "url": "https://dataengineeringcentral.substack.com/feed",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Dagster Blog",
+    "url": "https://dagster.io/blog/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "MotherDuck Blog",
+    "url": "https://motherduck.com/rss.xml",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Estuary Blog",
+    "url": "https://estuary.dev/blog/rss.xml",
+    "sourceWeight": 0.5,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Confessions of a Data Guy",
+    "url": "https://www.confessionsofadataguy.com/feed/",
+    "sourceWeight": 0.5,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Real Python",
+    "url": "https://realpython.com/atom.xml",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "freeCodeCamp News",
+    "url": "https://www.freecodecamp.org/news/rss/",
+    "sourceWeight": 0.5,
+    "group": "Learning",
+    "learning": true
+  },
+  {
+    "kind": "rss",
+    "name": "Chip Huyen",
+    "url": "https://huyenchip.com/feed.xml",
+    "sourceWeight": 0.6,
+    "group": "Learning",
+    "learning": true
   }
 ]

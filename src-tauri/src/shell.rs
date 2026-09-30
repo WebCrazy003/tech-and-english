@@ -21,7 +21,7 @@ use crate::state::AppState;
 pub const WIDGET: &str = "widget";
 pub const MAIN: &str = "main";
 const CARD_SIZE: (f64, f64) = (340.0, 280.0);
-const PILL_SIZE: (f64, f64) = (180.0, 36.0);
+const PILL_SIZE: (f64, f64) = (200.0, 36.0);
 const EDGE_INSET: f64 = 12.0;
 
 /// Menu items whose state changes at runtime.

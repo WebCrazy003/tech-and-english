@@ -13,7 +13,11 @@ const EMPTY: TopicInput = {
   enabled: true,
   notify: false,
   notifyThreshold: null,
+  learn: false,
 };
+
+/** A keyword topic like "learn data engineering" rarely matches news; the Learn switch works better. */
+const looksLikeLearnTopic = (name: string) => /^\s*learn(ing)?\b/i.test(name);
 
 export default function Topics() {
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -87,6 +91,7 @@ export default function Topics() {
             onClick={() => setDraft({ ...t })}
           >
             <span style={{ opacity: t.enabled ? 1 : 0.4 }}>{t.name}</span>
+            {t.learn && <span title="Learn on: lessons for this topic">📘</span>}
             {t.notify && <span title="Notifications on">🔔</span>}
           </button>
         ))}
@@ -120,6 +125,12 @@ export default function Topics() {
               ? `Would match ${preview.matched} of the ${preview.total} stories from the last 3 days.`
               : "Add keywords to see how many stories match."}
           </div>
+          {draft.id && looksLikeLearnTopic(draft.name) && preview?.matched === 0 && (
+            <div className={styles.tip} role="note">
+              <strong>Tip:</strong> learning topics work better as a switch. Turn on <strong>Learn</strong> for your
+              subject topic (e.g. Data Engineering) and delete this one.
+            </div>
+          )}
         </div>
         <div>
           <label>Hide stories that contain</label>
@@ -130,6 +141,20 @@ export default function Topics() {
             placeholder="Optional, for example: crypto"
           />
         </div>
+        <label className={styles.switchRow}>
+          <input
+            type="checkbox"
+            checked={draft.learn}
+            onChange={(e) => setDraft({ ...draft, learn: e.target.checked })}
+          />
+          <span>
+            <strong>Learn</strong>
+            <span className={styles.fieldHelp}>
+              Also find learning materials (tutorials, explainers) for this topic. One is chosen each day as
+              Today's lesson.
+            </span>
+          </span>
+        </label>
         <div className="row" style={{ gap: 20, flexWrap: "wrap" }}>
           <label className={styles.check}>
             Priority

@@ -22,6 +22,7 @@ export default function Explore() {
   const [days, setDays] = useState(3);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [savedOnly, setSavedOnly] = useState(false);
+  const [learningOnly, setLearningOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<ArticleListItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export default function Explore() {
   }, []);
 
   // One string key for all filter values, so the loader only changes when a filter changes.
-  const spec = JSON.stringify({ topicId, feedId, unreadOnly, savedOnly, query: query.trim(), days });
+  const spec = JSON.stringify({ topicId, feedId, unreadOnly, savedOnly, learningOnly, query: query.trim(), days });
 
   const loadPage = useCallback(
     (c: string | null) => {
@@ -43,6 +44,7 @@ export default function Explore() {
         feedId: number | "";
         unreadOnly: boolean;
         savedOnly: boolean;
+        learningOnly: boolean;
         query: string;
         days: number;
       };
@@ -51,6 +53,7 @@ export default function Explore() {
         feedId: f.feedId === "" ? undefined : f.feedId,
         unreadOnly: f.unreadOnly,
         savedOnly: f.savedOnly,
+        learningOnly: f.learningOnly,
         query: f.query || undefined,
         since: f.savedOnly ? undefined : daysAgoIso(f.days),
       };
@@ -119,13 +122,20 @@ export default function Explore() {
         <label className={styles.check}>
           <input type="checkbox" checked={savedOnly} onChange={(e) => setSavedOnly(e.target.checked)} /> Saved
         </label>
+        <label className={styles.check} title="Tutorials, guides and explainers">
+          <input type="checkbox" checked={learningOnly} onChange={(e) => setLearningOnly(e.target.checked)} /> Learning only
+        </label>
       </div>
 
       {items.map((a) => (
         <ArticleRow key={a.id} a={a} onChange={() => void loadPage(null)} />
       ))}
       {!loading && items.length === 0 && (
-        <div className={styles.empty}>No stories here. Try a longer time range or fewer filters.</div>
+        <div className={styles.empty}>
+          {learningOnly
+            ? "No learning material here. Try a longer time range, or turn on Learn for a topic in Settings › Topics."
+            : "No stories here. Try a longer time range or fewer filters."}
+        </div>
       )}
       {loading && <div className={styles.empty}>Loading…</div>}
       <div ref={sentinel} className={styles.sentinel} />

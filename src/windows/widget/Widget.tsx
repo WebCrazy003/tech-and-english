@@ -88,7 +88,17 @@ function MoreMenu({ article, onDone }: { article: ArticleListItem; onDone: () =>
   );
 }
 
-function ArticleCard({ label, article, why }: { label: string; article: ArticleListItem; why?: string }) {
+function ArticleCard({
+  label,
+  article,
+  why,
+  lesson = false,
+}: {
+  label: string;
+  article: ArticleListItem;
+  why?: string;
+  lesson?: boolean;
+}) {
   const refreshPick = useApp((s) => s.refreshPick);
   const meta = [article.primaryTopic, article.sourceName, shortAge(article.publishedAt ?? article.discoveredAt)]
     .filter(Boolean)
@@ -98,7 +108,7 @@ function ArticleCard({ label, article, why }: { label: string; article: ArticleL
     : null;
   return (
     <div className={styles.pick}>
-      <div className={styles.label}>{label}</div>
+      <div className={`${styles.label} ${lesson ? styles.labelLesson : ""}`}>{lesson ? `📘 ${label}` : label}</div>
       <h2 className={styles.title} title={article.title}>
         {article.title}
       </h2>
@@ -117,8 +127,29 @@ function ArticleCard({ label, article, why }: { label: string; article: ArticleL
   );
 }
 
-function Body() {
-  const { settings, pick, preview, loaded } = useApp();
+type View = "story" | "lesson";
+
+/** Story | Lesson switch in the header (only when there is a lesson today). */
+function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <div className={styles.segmented} role="tablist" aria-label="Today's story or lesson">
+      {(["story", "lesson"] as View[]).map((v) => (
+        <button
+          key={v}
+          role="tab"
+          aria-selected={view === v}
+          className={view === v ? styles.segOn : undefined}
+          onClick={() => onChange(v)}
+        >
+          {v === "story" ? "Story" : "Lesson"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Body({ view }: { view: View }) {
+  const { settings, pick, lesson, preview, loaded } = useApp();
   if (!loaded || !settings) return <div className={styles.center}>Loading…</div>;
   if (!settings.onboardingDone) {
     return (
@@ -130,7 +161,10 @@ function Body() {
       </div>
     );
   }
-  if (pick) return <ArticleCard label="Today's pick" article={pick.article} why={pick.why} />;
+  if (view === "lesson" && lesson) {
+    return <ArticleCard label="Today's lesson" article={lesson.article} why={lesson.why} lesson />;
+  }
+  if (pick) return <ArticleCard label="Today's story" article={pick.article} why={pick.why} />;
   const beforePickTime = new Date().toTimeString().slice(0, 5) < settings.pickTime;
   if (preview) {
     const label = beforePickTime ? `Preview · today's pick at ${settings.pickTime}` : "Best story right now";
@@ -169,7 +203,8 @@ function Footer() {
 }
 
 export default function Widget() {
-  const { settings, mode, pick } = useApp();
+  const { settings, mode, pick, lesson } = useApp();
+  const [view, setView] = useState<View>("story");
   const style = settings?.widget.style ?? "card";
   const collapse = () => api.setWidgetStyle({ style: "pill" }).catch(toastError);
   const expand = () => api.setWidgetStyle({ style: "card" }).catch(toastError);
@@ -179,7 +214,13 @@ export default function Widget() {
       <div className={styles.pill} data-tauri-drag-region>
         <span data-tauri-drag-region className={mode === "hibernate" ? styles.dotHibernate : styles.dot} />
         <span data-tauri-drag-region className={styles.pillText}>
-          {mode === "hibernate" ? "Hibernate" : pick ? "Today's pick ready" : "Tech English"}
+          {mode === "hibernate"
+            ? "Hibernate"
+            : pick && lesson
+              ? "Story + lesson ready"
+              : pick
+                ? "Today's story ready"
+                : "Tech English"}
         </span>
         <button className={styles.iconBtn} onClick={expand} aria-label="Expand widget">
           ⌄
@@ -191,9 +232,13 @@ export default function Widget() {
   return (
     <div className={styles.card}>
       <header className={styles.header} data-tauri-drag-region>
-        <span data-tauri-drag-region className={styles.appName}>
-          Tech English
-        </span>
+        {lesson ? (
+          <ViewSwitch view={view} onChange={setView} />
+        ) : (
+          <span data-tauri-drag-region className={styles.appName}>
+            Tech English
+          </span>
+        )}
         <span className="spacer" data-tauri-drag-region />
         <AiDot />
         <ModeBadge mode={mode} />
@@ -205,7 +250,7 @@ export default function Widget() {
         </button>
       </header>
       <main className={styles.body}>
-        <Body />
+        <Body view={lesson ? view : "story"} />
       </main>
       <Footer />
     </div>

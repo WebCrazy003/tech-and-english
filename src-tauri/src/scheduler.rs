@@ -66,6 +66,10 @@ impl Scheduler {
 
     pub fn spawn(self: Arc<Self>) {
         tauri::async_runtime::spawn(async move {
+            // P3: articles stored before the upgrade get their learning score once.
+            if let Err(e) = self.news.backfill_learning().await {
+                tracing::warn!(error = %e, "learning backfill failed");
+            }
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {

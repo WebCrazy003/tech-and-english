@@ -148,6 +148,26 @@ export default function General() {
             ))}
           </select>
         </div>
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
+            <label htmlFor="lessonAge">Lessons: consider articles up to</label>
+            <div className={styles.fieldHelp}>
+              Good tutorials stay useful, so Today's lesson can be older than the news. Learning sources keep
+              articles this long.
+            </div>
+          </div>
+          <select
+            id="lessonAge"
+            value={settings.lessonMaxAgeDays}
+            onChange={(e) => void patch({ lessonMaxAgeDays: Number(e.target.value) })}
+          >
+            {[14, 30, 60, 90, 180].map((d) => (
+              <option key={d} value={d}>
+                {d} days old
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className={styles.groupTitle}>Widget and app</div>

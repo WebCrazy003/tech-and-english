@@ -11,6 +11,7 @@ use crate::error::{AppError, AppResult};
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../../migrations/0001_init.sql")),
     (2, include_str!("../../migrations/0002_reader_ai.sql")),
+    (3, include_str!("../../migrations/0003_learning.sql")),
 ];
 
 /// Single SQLite connection shared by all services. rusqlite is synchronous, so
@@ -110,5 +111,73 @@ mod tests {
             .await
             .unwrap();
         assert!(n >= 13);
+    }
+
+    /// 0003 on a database with P1/P2 data: picks become stories, new feeds are added once.
+    #[test]
+    fn learning_migration_keeps_picks_and_skips_existing_feeds() {
+        let mut c = Connection::open_in_memory().unwrap();
+        c.execute_batch(MIGRATIONS[0].1).unwrap();
+        c.execute_batch(MIGRATIONS[1].1).unwrap();
+        c.pragma_update(None, "user_version", 2).unwrap();
+        c.execute_batch(
+            "INSERT INTO articles(id, url, normalized_url, title, title_key, source_name, discovered_at)
+               VALUES (1, 'https://a/1', 'https://a/1', 't', 't', 's', '2026-09-28T00:00:00Z');
+             INSERT INTO daily_picks(date, article_id, why, why_source, created_at)
+               VALUES ('2026-09-28', 1, 'why', 'llm', '2026-09-28T08:00:00Z');
+             INSERT INTO feeds(kind, name, url, source_weight, created_at)
+               VALUES ('rss', 'My Real Python', 'https://realpython.com/atom.xml', 0.9, 'x'),
+                      ('rss', 'DuckDB', 'https://duckdb.org/feed.xml', 0.6, 'x');",
+        )
+        .unwrap();
+        migrate(&mut c).unwrap();
+
+        let (kind, why_source): (String, String) = c
+            .query_row(
+                "SELECT kind, why_source FROM daily_picks WHERE date = '2026-09-28'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((kind.as_str(), why_source.as_str()), ("story", "llm"));
+        // A lesson for the same date is allowed now.
+        c.execute(
+            "INSERT INTO daily_picks(date, kind, article_id, why, created_at) VALUES ('2026-09-28', 'lesson', 1, 'w', 'x')",
+            [],
+        )
+        .unwrap();
+
+        let rp: (String, f64, bool) = c
+            .query_row(
+                "SELECT name, source_weight, learning FROM feeds WHERE url = 'https://realpython.com/atom.xml'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            rp,
+            ("My Real Python".to_string(), 0.9, false),
+            "existing feed untouched"
+        );
+        let n: i64 = c
+            .query_row(
+                "SELECT count(*) FROM feeds WHERE url = 'https://realpython.com/atom.xml'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1, "no duplicate");
+        let learning: i64 = c
+            .query_row("SELECT count(*) FROM feeds WHERE learning = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(learning, 8 + 1, "8 new sources + DuckDB flagged");
+    }
+
+    #[test]
+    fn learning_migration_adds_no_feeds_to_a_fresh_install() {
+        let mut c = Connection::open_in_memory().unwrap();
+        migrate(&mut c).unwrap();
+        let n: i64 = c.query_row("SELECT count(*) FROM feeds", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0, "onboarding offers them instead");
     }
 }

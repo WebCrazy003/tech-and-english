@@ -335,7 +335,7 @@ impl AiService {
         Ok(())
     }
 
-    /// AI-written "why" for today's pick. Only when the model is already loaded and idle;
+    /// AI-written "why" for today's story (the lesson keeps its template). Only when the model is already loaded and idle;
     /// never starts the model (P2 dev spec §14.2).
     pub async fn background_why(&self, date: String) -> AppResult<bool> {
         if !self.settings.get().ai.llm_why || !self.provider.is_ready() {
@@ -348,7 +348,7 @@ impl AiService {
             return Ok(false);
         };
         let d = date.clone();
-        let row = self.db.call(move |c| picks::get(c, &d)).await?;
+        let row = self.db.call(move |c| picks::get(c, &d, picks::STORY)).await?;
         let Some(row) = row.filter(|r| r.why_source == "template") else {
             return Ok(false);
         };
@@ -371,7 +371,9 @@ impl AiService {
         if text.is_empty() {
             return Ok(false);
         }
-        self.db.call(move |c| picks::set_why(c, &date, &text, "llm")).await?;
+        self.db
+            .call(move |c| picks::set_why(c, &date, picks::STORY, &text, "llm"))
+            .await?;
         events::emit(
             self.events.as_ref(),
             events::NEWS_UPDATED,
@@ -574,7 +576,7 @@ mod tests {
     async fn background_why_only_when_ready() {
         let t = setup(&[&["\"Because you like Kafka.\""]]).await;
         let a = t.article;
-        t.db.call(move |c| picks::insert(c, "2026-09-29", a, "template why", "t"))
+        t.db.call(move |c| picks::insert(c, "2026-09-29", picks::STORY, a, "template why", "t"))
             .await
             .unwrap();
         t.mock.ready.store(false, Ordering::SeqCst);
@@ -584,7 +586,11 @@ mod tests {
         );
         t.mock.ready.store(true, Ordering::SeqCst);
         assert!(t.svc.background_why("2026-09-29".into()).await.unwrap());
-        let row = t.db.call(|c| picks::get(c, "2026-09-29")).await.unwrap().unwrap();
+        let row =
+            t.db.call(|c| picks::get(c, "2026-09-29", picks::STORY))
+                .await
+                .unwrap()
+                .unwrap();
         assert_eq!(
             (row.why.as_str(), row.why_source.as_str()),
             ("Because you like Kafka.", "llm")
