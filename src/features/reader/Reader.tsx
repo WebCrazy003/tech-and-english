@@ -137,13 +137,38 @@ export default function Reader() {
   };
 
   // Listen: the text of the open tab, else the cached B1 summary, else title + description.
+  // The spoken sentence and word are highlighted, so the text must be on screen: a saved summary
+  // is opened in its tab first.
+  // Waits until the tab's text is complete (it may still be streaming in): up to 10 s.
+  const derivEl = (kind: Tab) =>
+    new Promise<HTMLElement | null>((resolve) => {
+      let tries = 0;
+      const look = () => {
+        const el = document.querySelector<HTMLElement>(`[data-deriv="${kind}"]`);
+        const ready = !!el?.textContent && el.dataset.busy === undefined;
+        if (ready || ++tries > 200) resolve(el?.textContent ? el : null);
+        else setTimeout(look, 50);
+      };
+      look();
+    });
   const listen = async () => {
     if (!article) return;
     if (speech.speaking) return speech.stop();
-    const tabText = tab !== "original" ? document.querySelector(`[data-deriv="${tab}"]`)?.textContent : null;
-    const summary = tabText || (await api.getCachedDerivative(article.id, "summary_b1").catch(() => null));
-    void speech.read(summary || `${article.title}. ${article.description ?? ""}`);
+    if (tab !== "original") {
+      const el = await derivEl(tab);
+      if (el) return void speech.readElement(el);
+    }
+    const summary = await api.getCachedDerivative(article.id, "summary_b1").catch(() => null);
+    if (summary) {
+      setTab("summary_b1");
+      const el = await derivEl("summary_b1");
+      return void (el ? speech.readElement(el) : speech.read(summary));
+    }
+    void speech.read(`${article.title}. ${article.description ?? ""}`);
   };
+  // Another tab shows other text: stop reading the old one.
+  const stopReading = speech.stop;
+  useEffect(() => stopReading(), [tab, stopReading]);
 
   const a = article;
   const meta = a

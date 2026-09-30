@@ -190,6 +190,7 @@ export function stop(): void
 - `Settings` gains `tts: { voiceUri: Option<String>, rate: f32 (0.85), wordRate (0.7, changed: the popup and quizzes speak single words slower), volume: f32 (1.0), pauseMs: u32 (400) }` and `learning: { quizSize (10), desiredRetention (0.9), autoPronounce (true) }`.
 - **(changed)** WKWebView (checked with a Swift probe) has `speechSynthesis` with 187 voices, `Intl.Segmenter` and the CSS Highlight API. Voice IDs look like `com.apple.voice.enhanced.en-US.Ava`, so "Premium"/"Enhanced" is searched in the ID too, and the robotic `eloquence` voices and the macOS novelty voices ("Bubbles", "Bad News", …) are not offered.
 - **Listen (changed):** reads the open B1/Easy tab, else the cached B1 summary (new command `get_cached_derivative`, which never starts the AI), else title + description.
+- **Read-along (added 2026-09-30):** while Listen reads, the sentence and the word being spoken are highlighted in the text (`lib/spokenHighlight.ts`: CSS Custom Highlight API + the `boundary` events of speechSynthesis; checked in WKWebView with Flo, Samantha and Daniel — one `word` event per word with `charIndex`/`charLength`). The text is read from the DOM, so what is heard is what is shown: on the Original tab a saved summary is opened in its tab first. Title + description (no summary yet) is read without highlighting. The tutor's bubbles in Talk use the same highlighting.
 
 ---
 

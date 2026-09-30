@@ -10,6 +10,7 @@ import {
   type TalkPhase,
   type VoiceEvent,
 } from "../lib/api";
+import { bubbleDone, bubbleSentence, bubbleWord } from "../features/talk/bubbleHighlight";
 import { clampRate, SpeechQueue } from "../features/talk/speechQueue";
 import { toast, toastError } from "./toast";
 
@@ -78,7 +79,12 @@ let measuring: { turn: number | null; since: number } | null = null;
 const queue = new SpeechQueue({
   voiceURI: () => useTalk.getState().settings?.voiceUri ?? null,
   pauseMs: () => useTalk.getState().settings?.pauseMs ?? 400,
-  onSpeaking: (speaking) => useTalk.setState({ speaking }),
+  onSpeaking: (speaking) => {
+    useTalk.setState({ speaking });
+    if (!speaking) bubbleDone();
+  },
+  onSentence: bubbleSentence,
+  onWord: bubbleWord,
   onTurnStart: (turn) => {
     if (measuring && (measuring.turn === null || measuring.turn === turn) && Number.isInteger(turn)) {
       const ms = Math.round(performance.now() - measuring.since);

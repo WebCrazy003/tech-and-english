@@ -9,6 +9,9 @@ export interface QueueOptions {
   onSpeaking: (speaking: boolean) => void;
   /** The first sentence of `turn` started playing. */
   onTurnStart: (turn: number) => void;
+  /** A sentence is about to be spoken / a word of it is being spoken (read-along). */
+  onSentence?: (turn: number, text: string) => void;
+  onWord?: (charIndex: number, charLength: number) => void;
 }
 
 interface Item {
@@ -66,10 +69,12 @@ export class SpeechQueue {
         this.current = it.turn;
         const first = !this.started.has(it.turn);
         if (first) this.started.add(it.turn);
+        this.opts.onSentence?.(it.turn, it.text);
         await speak(it.text, {
           rate: it.rate,
           voiceURI: this.opts.voiceURI(),
           onStart: first ? () => this.opts.onTurnStart(it.turn) : undefined,
+          onWord: this.opts.onWord,
         }).catch(() => {});
         if (this.items.length) await new Promise((r) => setTimeout(r, this.opts.pauseMs()));
       }

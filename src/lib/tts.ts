@@ -1,11 +1,15 @@
 // Text-to-speech with the macOS voices through the webview's speechSynthesis (P4 dev spec §5).
 
+import { clearSpoken, markSentence, markWord, sentencesOf } from "./spokenHighlight";
+
 export interface TtsOptions {
   rate: number;
   voiceURI?: string | null;
   volume?: number;
   /** Called when the audio actually starts (latency measurement, P5). */
   onStart?: () => void;
+  /** Called for each spoken word: its position in the text (read-along highlighting). */
+  onWord?: (charIndex: number, charLength: number) => void;
 }
 
 const synth = (): SpeechSynthesis | null => (typeof window !== "undefined" && "speechSynthesis" in window ? window.speechSynthesis : null);
@@ -85,6 +89,12 @@ export async function speak(text: string, opts: TtsOptions): Promise<void> {
       u.lang = "en-US";
     }
     if (opts.onStart) u.onstart = opts.onStart;
+    if (opts.onWord) {
+      const onWord = opts.onWord;
+      u.onboundary = (e) => {
+        if (e.name === "word") onWord(e.charIndex, e.charLength ?? 0);
+      };
+    }
     u.onend = () => {
       alive.delete(u);
       resolve();
@@ -114,7 +124,29 @@ export async function speakSentences(sentences: string[], opts: TtsOptions & { p
 
 export function stop(): void {
   stopped = true;
+  readAlongRun++;
   synth()?.cancel();
+  clearSpoken();
+}
+
+let readAlongRun = 0;
+
+/** Read the text of `root` as shown on screen, highlighting the sentence and word being spoken. */
+export async function readAlong(root: HTMLElement, opts: TtsOptions & { pauseMs: number }): Promise<void> {
+  stop();
+  const run = readAlongRun;
+  try {
+    for (const s of sentencesOf(root)) {
+      if (run !== readAlongRun) return;
+      if (s.text === "Based on the short description only.") continue;
+      markSentence(s);
+      await speak(s.text, { ...opts, onWord: (i, len) => run === readAlongRun && markWord(s, i, len) });
+      if (run !== readAlongRun) return;
+      await new Promise((r) => setTimeout(r, opts.pauseMs));
+    }
+  } finally {
+    if (run === readAlongRun) clearSpoken();
+  }
 }
 
 /** Split text into sentences for `speakSentences`. Markdown marks are removed. */

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useCallback, useEffect, useState } from "react";
 import { api, EVENTS, onEvent, type DueCount } from "../lib/api";
-import { speak, speakSentences, stop, toSentences } from "../lib/tts";
+import { readAlong, speak, speakSentences, stop, toSentences } from "../lib/tts";
 import { useApp } from "./app";
 import { toastError } from "./toast";
 
@@ -75,10 +75,26 @@ export function useSpeech() {
     [disabled, tts],
   );
 
+  /** Read an element's text as shown on screen, highlighting the word being spoken. */
+  const readElement = useCallback(
+    async (el: HTMLElement) => {
+      if (disabled || !tts) return;
+      setSpeaking(true);
+      try {
+        await readAlong(el, { rate: tts.rate, voiceURI: tts.voiceUri, volume: tts.volume, pauseMs: tts.pauseMs });
+      } catch (e) {
+        toastError(e);
+      } finally {
+        setSpeaking(false);
+      }
+    },
+    [disabled, tts],
+  );
+
   const halt = useCallback(() => {
     stop();
     setSpeaking(false);
   }, []);
 
-  return { word, read, stop: halt, speaking, disabled };
+  return { word, read, readElement, stop: halt, speaking, disabled };
 }

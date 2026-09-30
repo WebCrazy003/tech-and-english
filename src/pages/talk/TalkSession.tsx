@@ -99,7 +99,7 @@ function Bubble({ m, onWord }: { m: TalkMessage; onWord: (sel: WordSelection) =>
   if (m.role === "user") return <div className={`${styles.bubble} ${styles.user}`}>{m.text}</div>;
   return (
     <>
-      <div className={`${styles.bubble} ${styles.tutor} ${m.local ? styles.local : ""}`}>
+      <div className={`${styles.bubble} ${styles.tutor} ${m.local ? styles.local : ""}`} data-tutor data-turn={m.turn}>
         <span className={m.streaming ? styles.cursor : undefined}>
           <TutorText text={m.text} onWord={onWord} />
         </span>
