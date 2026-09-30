@@ -55,6 +55,13 @@ async fn golden_tutor() {
 
     let db = Db::open_in_memory().unwrap();
     let settings = SettingsStore::load(db.clone()).await.unwrap();
+    // TE_LLAMA_SERVER=<path> tests another engine binary (the bundled sidecar, P6).
+    if let Ok(p) = std::env::var("TE_LLAMA_SERVER") {
+        settings
+            .update(serde_json::json!({ "ai": { "llamaServerPath": p } }))
+            .await
+            .unwrap();
+    }
     if let Ok(m) = std::env::var("TE_MODEL") {
         settings
             .update(serde_json::json!({ "ai": { "activeModel": m } }))

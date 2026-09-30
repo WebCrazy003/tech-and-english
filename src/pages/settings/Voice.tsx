@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type CorrectionPolicy } from "../../lib/api";
-import { accentOf, listEnglishVoices, pickDefaultVoice, speak, stop } from "../../lib/tts";
+import { isRobotVoice, listEnglishVoices, pickDefaultVoice, speak, stop, voiceGroups } from "../../lib/tts";
 import { DownloadButton } from "../../features/ai/AiSetup";
 import { gb, useAi } from "../../stores/ai";
 import { useApp } from "../../stores/app";
@@ -18,11 +18,7 @@ export function VoiceSettings() {
     void listEnglishVoices().then(setVoices);
     return () => stop();
   }, []);
-  const groups = useMemo(() => {
-    const m = new Map<string, SpeechSynthesisVoice[]>();
-    for (const v of voices) m.set(accentOf(v.lang), [...(m.get(accentOf(v.lang)) ?? []), v]);
-    return [...m.entries()];
-  }, [voices]);
+  const groups = useMemo(() => voiceGroups(voices), [voices]);
   if (!settings) return null;
   const tts = settings.tts;
   const fallback = pickDefaultVoice(voices);
@@ -39,6 +35,12 @@ export function VoiceSettings() {
             <div className={styles.fieldHelp}>
               {voices.length ? `${voices.length} English voices on this Mac.` : "Loading the voices…"}
             </div>
+            {tts.voiceUri && isRobotVoice({ voiceURI: tts.voiceUri }) && (
+              <div className="error-text" style={{ fontSize: 12 }}>
+                This is a robot-like voice. For a more human voice choose Automatic or Samantha, or download a Premium
+                voice (see below).
+              </div>
+            )}
           </div>
           <select id="voice" value={tts.voiceUri ?? ""} onChange={(e) => void patch({ tts: { voiceUri: e.target.value || null } })}>
             <option value="">Automatic{fallback ? ` (${fallback.name})` : ""}</option>

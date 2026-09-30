@@ -271,18 +271,18 @@
   border-top: 1px solid var(--border);
 }
 .prompt {
-  font-size: 32px;
+  font-size: calc(32px * var(--reading-scale, 1));
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 .original {
-  font-size: 20px;
+  font-size: calc(20px * var(--reading-scale, 1));
 }
 .answer p {
   margin: 4px 0;
 }
 .meaning {
-  font-size: 18px;
+  font-size: calc(18px * var(--reading-scale, 1));
 }
 .grades {
   display: flex;

@@ -174,6 +174,17 @@ export default function General() {
       <div className={styles.group}>
         <div className={styles.field}>
           <div className={styles.fieldText}>
+            <label htmlFor="scale">Text size</label>
+            <div className={styles.fieldHelp}>Stories, quiz cards and the talk transcript.</div>
+          </div>
+          <select id="scale" value={settings.readingScale} onChange={(e) => void patch({ readingScale: Number(e.target.value) })}>
+            <option value={1}>Normal</option>
+            <option value={1.15}>Large</option>
+            <option value={1.3}>Larger</option>
+          </select>
+        </div>
+        <div className={styles.field}>
+          <div className={styles.fieldText}>
             <label htmlFor="wstyle">Widget</label>
           </div>
           <select

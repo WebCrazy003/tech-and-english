@@ -10,7 +10,7 @@ import {
   type VoiceSetup,
 } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
-import { accentOf, listEnglishVoices, pickDefaultVoice } from "../../lib/tts";
+import { listEnglishVoices, pickDefaultVoice, voiceGroups } from "../../lib/tts";
 import { AiSetupCard, DownloadButton } from "../../features/ai/AiSetup";
 import { useAi } from "../../stores/ai";
 import { useApp } from "../../stores/app";
@@ -101,11 +101,7 @@ export default function TalkSetup() {
     else if (!pick) setTopic("free");
   }, [params, pick, lesson]);
 
-  const groups = useMemo(() => {
-    const m = new Map<string, SpeechSynthesisVoice[]>();
-    for (const v of voices) m.set(accentOf(v.lang), [...(m.get(accentOf(v.lang)) ?? []), v]);
-    return [...m.entries()];
-  }, [voices]);
+  const groups = useMemo(() => voiceGroups(voices), [voices]);
 
   const sttModel = overview?.models.find((m) => m.role === "stt" && m.default);
   const chatReady = overview?.models.some((m) => m.role === "chat" && m.downloaded) ?? true;

@@ -57,6 +57,7 @@ pub fn build_tray(app: &AppHandle, mode: Mode) -> AppResult<()> {
     let refresh = MenuItem::with_id(app, "refresh", "Refresh news now", true, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", "Launch at login", true, autostart_on, None::<&str>)?;
+    let about = MenuItem::with_id(app, "about", "About Tech English", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Tech English", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -69,6 +70,7 @@ pub fn build_tray(app: &AppHandle, mode: Mode) -> AppResult<()> {
             &refresh,
             &autostart,
             &PredefinedMenuItem::separator(app)?,
+            &about,
             &quit,
         ],
     )?;
@@ -95,6 +97,7 @@ fn on_menu_event(app: &AppHandle, ev: MenuEvent) {
     match ev.id().as_ref() {
         "toggle_widget" => toggle_widget(app),
         "open_app" | "today_pick" => show_main(app, "/today"),
+        "about" => show_main(app, "/settings/about"),
         "mode_standard" | "mode_hibernate" => {
             let mode = if ev.id().as_ref() == "mode_standard" {
                 Mode::Standard

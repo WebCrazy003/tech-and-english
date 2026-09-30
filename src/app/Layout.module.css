@@ -89,7 +89,7 @@
 }
 .segmented .onHibernate {
   background: var(--hibernate);
-  color: #fff;
+  color: var(--accent-text);
 }
 .segmented .on:hover,
 .segmented .onHibernate:hover {

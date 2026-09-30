@@ -31,6 +31,8 @@ pub struct AppState {
     pub vocab: Arc<VocabService>,
     /// Voice tutor (P5).
     pub voice: Arc<VoiceEngine>,
+    /// Logs and crash files (P6 diagnostics).
+    pub log_dir: std::path::PathBuf,
     pub downloader: Arc<Downloader>,
     /// Set by the tray Quit item; any other exit request is prevented.
     pub quitting: AtomicBool,

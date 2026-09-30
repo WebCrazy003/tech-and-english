@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { findKnown } from "./highlights";
 import { sentenceAt } from "./selection";
 import { textKey } from "../../stores/words";
-import { accentOf, pickDefaultVoice, toSentences } from "../../lib/tts";
+import { accentOf, pickDefaultVoice, toSentences, voiceGroups } from "../../lib/tts";
 
 describe("sentenceAt", () => {
   const text = "Kafka stores events. The model runs inference on your laptop. It is fast.";
@@ -53,5 +53,21 @@ describe("tts helpers", () => {
     ];
     expect(pickDefaultVoice(mac)?.name).toBe("Ava");
     expect(pickDefaultVoice(mac.slice(0, 2))?.name).toBe("Samantha");
+  });
+});
+
+describe("voiceGroups", () => {
+  it("puts the robot-like Eloquence voices in their own group at the end", () => {
+    const v = (name: string, lang: string, voiceURI: string) => ({ name, lang, voiceURI }) as SpeechSynthesisVoice;
+    const groups = voiceGroups([
+      v("Flo", "en-US", "com.apple.eloquence.en-US.Flo"),
+      v("Samantha", "en-US", "com.apple.voice.compact.en-US.Samantha"),
+      v("Daniel", "en-GB", "com.apple.voice.compact.en-GB.Daniel"),
+    ]);
+    expect(groups.map(([label, list]) => [label, list.map((x) => x.name)])).toEqual([
+      ["US", ["Samantha"]],
+      ["UK", ["Daniel"]],
+      ["Robot-like voices (not for learning)", ["Flo"]],
+    ]);
   });
 });

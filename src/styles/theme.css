@@ -5,17 +5,17 @@
   --border: #e2e2e7;
   --text: #1d1d1f;
   --text-2: #5f6068;
-  --text-3: #8a8b93;
-  --accent: #2f6fed;
+  --text-3: #6a6b73;
+  --accent: #2563dc;
   --accent-soft: #e6eefe;
   --accent-text: #ffffff;
-  --good: #1f9d55;
-  --warn: #c77c02;
-  --bad: #d93b3b;
+  --good: #187a43;
+  --warn: #9a5e00;
+  --bad: #c42d2d;
   --bad-soft: #fdeaea;
-  --hibernate: #6b5bd2;
+  --hibernate: #5f4fc8;
   --hibernate-soft: #eeebfb;
-  --learn: #0f7b6c;
+  --learn: #0e7567;
   --learn-soft: #e3f4f1;
   --speak-sentence: #fff3c4;
   --speak-word: #ffc940;
@@ -35,9 +35,10 @@
     --border: #3a3a40;
     --text: #f2f2f5;
     --text-2: #b4b5bd;
-    --text-3: #85868e;
-    --accent: #5b8cff;
+    --text-3: #9c9da5;
+    --accent: #6b97ff;
     --accent-soft: #24304a;
+    --accent-text: #0e1626;
     --good: #3cc47c;
     --warn: #e7a93b;
     --bad: #ff6b6b;
@@ -172,6 +173,29 @@ h3 {
 }
 .spacer {
   flex: 1;
+}
+
+/* P6: people who turn on "Reduce motion" get no pulsing dots, blinking cursors or smooth scrolling */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+kbd {
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  white-space: nowrap;
 }
 
 /* Read-along: the sentence and the word being spoken */

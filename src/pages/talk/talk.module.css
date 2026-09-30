@@ -191,7 +191,7 @@
   padding: 10px 14px;
   border-radius: 16px;
   line-height: 1.5;
-  font-size: 15px;
+  font-size: calc(15px * var(--reading-scale, 1));
 }
 .tutor {
   align-self: flex-start;

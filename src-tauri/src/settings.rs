@@ -223,6 +223,8 @@ pub struct Settings {
     pub learning: LearningSettings,
     pub voice: VoiceSettings,
     pub debug: DebugSettings,
+    /// Text size of stories, quiz cards and the talk transcript (1.0 = normal; P6 accessibility).
+    pub reading_scale: f64,
 }
 
 impl Default for Settings {
@@ -250,6 +252,7 @@ impl Default for Settings {
             learning: LearningSettings::default(),
             voice: VoiceSettings::default(),
             debug: DebugSettings::default(),
+            reading_scale: 1.0,
         }
     }
 }
@@ -318,6 +321,9 @@ impl Settings {
         }
         if self.voice.keep_transcripts_days > 3650 {
             return bad("Keep conversations for at most 3650 days (0 = forever)");
+        }
+        if !(0.8..=1.6).contains(&self.reading_scale) {
+            return bad("Text size must be between 0.8 and 1.6");
         }
         if self.notify_max_per_day > 5 {
             return bad("At most 5 high-interest notifications per day");
@@ -461,6 +467,9 @@ mod tests {
         let s = apply_patch(&d, &json!({"voice": {"correction": "low", "rate": 0.7}})).unwrap();
         assert_eq!((s.voice.correction, s.voice.rate), (CorrectionPolicy::Low, Some(0.7)));
         assert!(apply_patch(&d, &json!({"voice": {"correction": "sometimes"}})).is_err());
+        assert_eq!(d.reading_scale, 1.0);
+        assert!(apply_patch(&d, &json!({"readingScale": 1.3})).is_ok());
+        assert!(apply_patch(&d, &json!({"readingScale": 3.0})).is_err());
     }
 
     #[test]

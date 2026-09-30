@@ -25,3 +25,7 @@ dist-ssr
 
 # TypeScript build info
 *.tsbuildinfo
+
+# P6: sidecar builds
+build/
+src-tauri/binaries/

@@ -65,6 +65,19 @@ export function accentOf(lang: string): string {
   return (region && names[region]) || "Other";
 }
 
+/** The old "Eloquence" voices (Eddy, Flo, Grandma…): clear for screen readers, but they sound like a machine. */
+export function isRobotVoice(v: { voiceURI: string }): boolean {
+  return /eloquence/i.test(v.voiceURI);
+}
+
+/** Voices for a picker: by accent, with the robot-like voices in their own group at the end. */
+export function voiceGroups(voices: SpeechSynthesisVoice[]): [string, SpeechSynthesisVoice[]][] {
+  const m = new Map<string, SpeechSynthesisVoice[]>();
+  for (const v of voices.filter((x) => !isRobotVoice(x))) m.set(accentOf(v.lang), [...(m.get(accentOf(v.lang)) ?? []), v]);
+  const robots = voices.filter(isRobotVoice);
+  return robots.length ? [...m.entries(), ["Robot-like voices (not for learning)", robots]] : [...m.entries()];
+}
+
 async function voiceFor(uri?: string | null): Promise<SpeechSynthesisVoice | undefined> {
   const voices = await listEnglishVoices();
   return voices.find((v) => v.voiceURI === uri) ?? pickDefaultVoice(voices);

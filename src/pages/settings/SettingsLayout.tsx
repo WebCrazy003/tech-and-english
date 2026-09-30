@@ -9,6 +9,7 @@ const LINKS = [
   { to: "/settings/ai", label: "AI" },
   { to: "/settings/voice", label: "Voice" },
   { to: "/settings/learning", label: "Practice" },
+  { to: "/settings/about", label: "About" },
 ];
 
 export default function SettingsLayout() {

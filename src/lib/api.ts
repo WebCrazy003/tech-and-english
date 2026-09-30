@@ -47,6 +47,34 @@ export interface Settings {
   learning: LearningSettings;
   voice: VoiceSettingsDto;
   debug: { keepAudio: boolean };
+  /** Text size of stories, quiz cards and the talk transcript (1 = normal). */
+  readingScale: number;
+}
+
+// ---------------------------------------------------------------- about & diagnostics (P6)
+
+export interface AboutInfo {
+  version: string;
+  commit: string;
+  buildDate: string;
+  system: string;
+  models: { name: string; license: string; licenseUrl: string }[];
+}
+
+export interface EngineCheck {
+  path: string | null;
+  ok: boolean;
+}
+
+export interface Engines {
+  llama: EngineCheck;
+  whisper: EngineCheck;
+  freeDiskGb: number | null;
+}
+
+export interface CrashNotice {
+  file: string;
+  text: string;
 }
 
 export type CorrectionPolicy = "low" | "medium" | "high";
@@ -708,6 +736,14 @@ export const api = {
     call<{ nextDueAt: string; status: VocabStatus }>("grade_quiz_item", { sessionId, itemId, grade }),
   finishQuiz: (sessionId: number) => call<QuizResult>("finish_quiz", { sessionId }),
   listQuizHistory: (limit = 5) => call<QuizResult[]>("list_quiz_history", { limit }),
+
+  aboutInfo: () => call<AboutInfo>("about_info"),
+  thirdPartyLicenses: (kind: "rust" | "js" | "notices") => call<string>("third_party_licenses", { kind }),
+  checkEngines: () => call<Engines>("check_engines"),
+  getDiagnostics: () => call<string>("get_diagnostics"),
+  copyText: (text: string) => call<void>("copy_text", { text }),
+  takeCrashNotice: () => call<CrashNotice | null>("take_crash_notice"),
+  debugPanic: () => call<void>("debug_panic"),
 
   voiceSetup: () => call<VoiceSetup>("voice_setup"),
   startVoiceSession: (

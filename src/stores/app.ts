@@ -42,6 +42,15 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 }));
 
+/** Text size of stories, quiz cards and the talk transcript (Settings › General). */
+function applyReadingScale(settings: Settings | null) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty("--reading-scale", String(settings?.readingScale ?? 1));
+}
+useApp.subscribe((s, prev) => {
+  if (s.settings?.readingScale !== prev.settings?.readingScale) applyReadingScale(s.settings);
+});
+
 let started = false;
 
 /** Load state and subscribe to backend events once per window. */

@@ -304,7 +304,7 @@
 .toggleChipOn {
   background: var(--accent) !important;
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .feedGroup {
   margin-bottom: 18px;
@@ -447,4 +447,27 @@
 }
 .scoreDetails summary {
   cursor: pointer;
+}
+
+/* P6: About */
+.crash {
+  border: 1px solid var(--bad);
+  background: var(--bad-soft);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.crash p {
+  margin: 6px 0 10px;
+}
+.licenseText {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 360px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
 }

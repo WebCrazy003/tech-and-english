@@ -13,6 +13,8 @@ import Topics from "./pages/settings/Topics";
 import Feeds from "./pages/settings/Feeds";
 import Notifications from "./pages/settings/Notifications";
 import Ai from "./pages/settings/Ai";
+import About from "./pages/settings/About";
+import ErrorPage from "./app/ErrorPage";
 import Reader from "./features/reader/Reader";
 import { LearningSettings, VoiceSettings } from "./pages/settings/Voice";
 import WordBook from "./pages/words/WordBook";
@@ -33,32 +35,39 @@ const router = createHashRouter([
     path: "/",
     element: <Layout />,
     children: [
-      { index: true, element: <Navigate to="/today" replace /> },
-      { path: "today", element: <Today /> },
-      { path: "explore", element: <Explore /> },
-      { path: "reader/:id", element: <Reader /> },
-      { path: "wordbook", element: <WordBook /> },
-      { path: "wordbook/:id", element: <WordDetail /> },
-      { path: "practice", element: <PracticeStart /> },
-      { path: "practice/session", element: <PracticeSession /> },
-      { path: "practice/result", element: <PracticeResult /> },
-      { path: "talk", element: <TalkSetup /> },
-      { path: "talk/session", element: <TalkSession /> },
-      { path: "talk/review/:id", element: <TalkReview /> },
-      { path: "talk/history", element: <TalkHistory /> },
-      { path: "talk/history/:id", element: <TalkTranscript /> },
       {
-        path: "settings",
-        element: <SettingsLayout />,
+        // A page that throws shows the error page; the sidebar stays usable (P6).
+        errorElement: <ErrorPage />,
         children: [
-          { index: true, element: <Navigate to="/settings/general" replace /> },
-          { path: "general", element: <General /> },
-          { path: "topics", element: <Topics /> },
-          { path: "feeds", element: <Feeds /> },
-          { path: "notifications", element: <Notifications /> },
-          { path: "ai", element: <Ai /> },
-          { path: "voice", element: <VoiceSettings /> },
-          { path: "learning", element: <LearningSettings /> },
+          { index: true, element: <Navigate to="/today" replace /> },
+          { path: "today", element: <Today /> },
+          { path: "explore", element: <Explore /> },
+          { path: "reader/:id", element: <Reader /> },
+          { path: "wordbook", element: <WordBook /> },
+          { path: "wordbook/:id", element: <WordDetail /> },
+          { path: "practice", element: <PracticeStart /> },
+          { path: "practice/session", element: <PracticeSession /> },
+          { path: "practice/result", element: <PracticeResult /> },
+          { path: "talk", element: <TalkSetup /> },
+          { path: "talk/session", element: <TalkSession /> },
+          { path: "talk/review/:id", element: <TalkReview /> },
+          { path: "talk/history", element: <TalkHistory /> },
+          { path: "talk/history/:id", element: <TalkTranscript /> },
+          {
+            path: "settings",
+            element: <SettingsLayout />,
+            children: [
+              { index: true, element: <Navigate to="/settings/general" replace /> },
+              { path: "general", element: <General /> },
+              { path: "topics", element: <Topics /> },
+              { path: "feeds", element: <Feeds /> },
+              { path: "notifications", element: <Notifications /> },
+              { path: "ai", element: <Ai /> },
+              { path: "voice", element: <VoiceSettings /> },
+              { path: "learning", element: <LearningSettings /> },
+              { path: "about", element: <About /> },
+            ],
+          },
         ],
       },
     ],

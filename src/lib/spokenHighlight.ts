@@ -120,7 +120,8 @@ function keepVisible(range: Range) {
   const r = range.getBoundingClientRect();
   if (r.height === 0 && r.width === 0) return;
   if (r.top < 90 || r.bottom > window.innerHeight - 90) {
-    range.startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const calm = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    range.startContainer.parentElement?.scrollIntoView({ block: "center", behavior: calm ? "auto" : "smooth" });
   }
 }
 

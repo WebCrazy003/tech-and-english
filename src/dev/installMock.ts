@@ -81,6 +81,7 @@ function install() {
     learning: { quizSize: 10, desiredRetention: 0.9, autoPronounce: true },
     voice: { sttModel: null, correction: "high", rate: null, keepTranscriptsDays: 90, vadAutoStop: false },
     debug: { keepAudio: false },
+    readingScale: 1,
   };
   let mode: "standard" | "hibernate" = "standard";
   let nextId = 100;
@@ -609,6 +610,26 @@ function install() {
           models[0].downloaded = true;
           setTimeout(() => void emit("ai://download", { modelId: p.modelId, done: true }), 800);
           return null;
+        case "about_info":
+          return {
+            version: "1.0.0", commit: "abc1234", buildDate: "2026-09-30", system: "macOS 14.7 · Apple M1 · 16 GB RAM",
+            models: models.filter((m) => m.downloaded).map((m) => ({ name: m.displayName, license: m.license, licenseUrl: m.licenseUrl })),
+          };
+        case "third_party_licenses":
+          return `Third-party ${p.kind} (mock)\n\nMIT License\n\nPermission is hereby granted…`;
+        case "check_engines":
+          return new Promise((r) =>
+            setTimeout(
+              () => r({ llama: { path: "/Applications/Tech English.app/Contents/MacOS/llama-server", ok: true }, whisper: { path: "/Applications/Tech English.app/Contents/MacOS/whisper-server", ok: !new URLSearchParams(location.search).has("noengine") }, freeDiskGb: 658 }),
+              800,
+            ),
+          );
+        case "get_diagnostics":
+          return "Tech English 1.0.0 (mock)\nmode: standard";
+        case "copy_text":
+          return null;
+        case "take_crash_notice":
+          return new URLSearchParams(location.search).has("crash") ? { file: "crash-1790000000.txt", text: "Tech English 1.0.0\npanic: boom" } : null;
         case "get_onboarding_defaults":
           return { topics: defaultTopics, feeds: defaultFeeds };
         case "complete_onboarding": {

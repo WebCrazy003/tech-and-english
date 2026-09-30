@@ -1,0 +1,77 @@
+Tech English — notices
+======================
+
+Tech English runs on your Mac. It includes or uses the following work by others.
+
+llama.cpp (llama-server) — MIT License
+--------------------------------------
+The AI engine that runs the language model. https://github.com/ggml-org/llama.cpp
+
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+whisper.cpp (whisper-server) — MIT License
+------------------------------------------
+The speech-recognition engine. https://github.com/ggml-org/whisper.cpp
+
+MIT License
+
+Copyright (c) 2023-2026 The ggml authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+New General Service List 1.2 — CC BY-SA 4.0
+-------------------------------------------
+The list of common English words used to estimate how hard a story is.
+"New General Service List" by Browne, C., Culligan, B., and Phillips, J.
+https://www.newgeneralservicelist.com/ — licensed under Creative Commons
+Attribution-ShareAlike 4.0 International (https://creativecommons.org/licenses/by-sa/4.0/).
+The app uses the lemmatized word forms as a plain list (resources/ngsl.txt).
+
+AI models
+---------
+Models are not part of the app. You download them yourself (Settings › AI and Settings › Voice).
+Each model's license is shown before the download, and the downloaded models are listed in
+Settings › About.
+
+macOS
+-----
+The dictionary meanings come from the dictionary built into macOS, and the voices are the
+voices installed on your Mac. They are not part of the app.

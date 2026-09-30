@@ -76,7 +76,7 @@
 }
 
 .body {
-  font-size: 18px;
+  font-size: calc(18px * var(--reading-scale, 1));
   line-height: 1.65;
   color: var(--text);
 }

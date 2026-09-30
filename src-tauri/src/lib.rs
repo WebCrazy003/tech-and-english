@@ -2,6 +2,7 @@ pub mod ai;
 pub mod clock;
 pub mod commands;
 pub mod db;
+pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod http;
@@ -49,6 +50,8 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let log_dir = app.path().app_log_dir()?;
     std::fs::create_dir_all(&log_dir)?;
     app.manage(LogGuard(logging::init(&log_dir)));
+    diagnostics::install_panic_hook(log_dir.clone());
+    diagnostics::prune_crashes(&log_dir);
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting Tech English");
 
     let db = Db::open(&data_dir.join("app.db"))?;
@@ -164,6 +167,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         ai_service: ai_service.clone(),
         vocab: vocab.clone(),
         voice: voice.clone(),
+        log_dir: log_dir.clone(),
         downloader: Arc::new(ai::models::Downloader::default()),
         quitting: AtomicBool::new(false),
         pending_route: Mutex::new(None),
@@ -194,6 +198,26 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     }
     if !current.onboarding_done {
         shell::show_main(&handle, "/onboarding");
+    } else {
+        // P6: the last run crashed → show the notice once (Settings › About).
+        let crash = diagnostics::latest_crash(&log_dir).map(|(file, _)| file);
+        let seen =
+            tauri::async_runtime::block_on(db.call(|c| db::repo::app_state::get(c, diagnostics::CRASH_SEEN_KEY)))
+                .ok()
+                .flatten();
+        if crash.is_some() && crash != seen {
+            shell::show_main(&handle, "/settings/about");
+        }
+    }
+    // P6: which engines will be used (bundled next to the app, the data folder, or Homebrew).
+    for (name, over) in [
+        ("llama-server", current.ai.llama_server_path.as_deref()),
+        ("whisper-server", current.ai.whisper_server_path.as_deref()),
+    ] {
+        match sidecar::resolve_binary(name, over, &data_dir) {
+            Some(p) => tracing::info!(engine = name, path = %p.display(), "engine found"),
+            None => tracing::warn!(engine = name, "engine not found"),
+        }
     }
 
     Arc::new(Scheduler {
@@ -315,6 +339,13 @@ pub fn run() {
             commands::voice::delete_conversations,
             commands::voice::report_latency,
             commands::voice::voice_latency,
+            commands::diagnostics::about_info,
+            commands::diagnostics::third_party_licenses,
+            commands::diagnostics::check_engines,
+            commands::diagnostics::get_diagnostics,
+            commands::diagnostics::copy_text,
+            commands::diagnostics::take_crash_notice,
+            commands::diagnostics::debug_panic,
             commands::shell::set_widget_style,
             commands::shell::show_main,
             commands::shell::take_pending_route,

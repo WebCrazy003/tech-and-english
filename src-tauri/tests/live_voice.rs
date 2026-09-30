@@ -105,6 +105,15 @@ async fn voice_session_on_real_engines() {
         .await
         .unwrap();
     let settings = SettingsStore::load(db.clone()).await.unwrap();
+    // TE_LLAMA_SERVER / TE_WHISPER_SERVER=<path> test other engine binaries (the bundled sidecars, P6).
+    for (var, key) in [
+        ("TE_LLAMA_SERVER", "llamaServerPath"),
+        ("TE_WHISPER_SERVER", "whisperServerPath"),
+    ] {
+        if let Ok(p) = std::env::var(var) {
+            settings.update(serde_json::json!({ "ai": { key: p } })).await.unwrap();
+        }
+    }
     let events = Arc::new(RecordingEventSink::default());
     let mode = ModeManager::load(db.clone(), events.clone()).await.unwrap();
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);

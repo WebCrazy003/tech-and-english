@@ -3,6 +3,7 @@ import { ApiError, api, EVENTS, onEvent, type ArticleListItem, type Mode } from 
 import { shortAge, timeAgo } from "../../lib/format";
 import { useApp } from "../../stores/app";
 import { AiDot } from "../../features/ai/AiSetup";
+import { useAi } from "../../stores/ai";
 import { toastError } from "../../stores/toast";
 import { useWords } from "../../stores/words";
 import styles from "./Widget.module.css";
@@ -216,9 +217,15 @@ function Footer() {
     const un = onEvent<{ active: boolean }>(EVENTS.voiceActive, (p) => setTalking(p.active));
     return () => void un.then((f) => f());
   }, []);
+  // P6: AI model downloads started in the first-run setup.
+  const progress = useAi((s) => s.progress);
+  const loads = Object.values(progress);
+  const downloading = loads.length
+    ? `Downloading AI ${Math.floor((loads.reduce((a, p) => a + p.bytes, 0) / Math.max(1, loads.reduce((a, p) => a + p.total, 0))) * 100)} %`
+    : null;
   return (
     <footer className={styles.footer}>
-      <span className={styles.footerText}>{status}</span>
+      <span className={styles.footerText}>{downloading ?? status}</span>
       {talking ? (
         <button className={styles.practice} onClick={() => api.showMain("/talk/session").catch(toastError)}>
           🎙 Talking… · Open

@@ -34,7 +34,7 @@
 }
 .toastError {
   background: var(--bad);
-  color: #fff;
+  color: var(--accent-text);
 }
 
 /* Score chip + tooltip */

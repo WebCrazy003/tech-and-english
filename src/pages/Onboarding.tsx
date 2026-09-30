@@ -1,12 +1,80 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { api, ensureNotificationPermission, type FeedSeed, type TopicSeed } from "../lib/api";
+import { api, ensureNotificationPermission, type Engines, type FeedSeed, type ModelInfo, type TopicSeed } from "../lib/api";
+import { gb, useAi } from "../stores/ai";
 import { useApp } from "../stores/app";
 import { toastError } from "../stores/toast";
 import Toasts from "../components/Toasts";
 import styles from "./pages.module.css";
 
-const STEPS = 4;
+const STEPS = 5;
+
+/** Step 5 (P6 §3): optional AI downloads. They continue in the background after Finish. */
+function AiStep({
+  engines,
+  llm,
+  stt,
+  want,
+  setWant,
+}: {
+  engines: Engines | null;
+  llm?: ModelInfo;
+  stt?: ModelInfo;
+  want: { llm: boolean; stt: boolean };
+  setWant: (w: { llm: boolean; stt: boolean }) => void;
+}) {
+  const row = (
+    key: "llm" | "stt",
+    title: string,
+    m: ModelInfo | undefined,
+    engine: { ok: boolean } | undefined,
+    use: string,
+  ) => {
+    const missing = engines !== null && !engine?.ok;
+    return (
+      <label className={styles.field}>
+        <div className={styles.fieldText}>
+          <div className={styles.fieldLabel}>
+            {title} — {m?.displayName ?? "…"}
+          </div>
+          <div className={styles.fieldHelp}>
+            {m ? `${gb(m.sizeBytes)} · license ${m.license} · ${use}` : use}
+            {m?.downloaded && " · already downloaded"}
+          </div>
+          {missing && <div className="error-text">AI engine missing — reinstall the app.</div>}
+        </div>
+        <input
+          type="checkbox"
+          checked={want[key] && !missing && !m?.downloaded}
+          disabled={missing || !m || m.downloaded}
+          onChange={(e) => setWant({ ...want, [key]: e.target.checked })}
+        />
+      </label>
+    );
+  };
+  return (
+    <>
+      <h1>AI features</h1>
+      <p className={styles.lead}>
+        Optional. The AI runs on this Mac: nothing is sent to the internet, and it costs nothing. You can also do this
+        later in Settings.
+      </p>
+      <div className={styles.group}>
+        {row("llm", "Language model", llm, engines?.llama, "summaries, chat, word explanations, tutor")}
+        {row("stt", "Speech recognition", stt, engines?.whisper, "the voice tutor hears you")}
+        <div className={styles.field}>
+          <div className={styles.fieldHelp}>
+            {engines === null
+              ? "Checking the AI engines… (the first time this can take half a minute)"
+              : engines.freeDiskGb != null
+                ? `Disk space available: ${Math.round(engines.freeDiskGb)} GB. The downloads continue in the background.`
+                : "The downloads continue in the background."}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -23,6 +91,11 @@ export default function Onboarding() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [startVersion, setStartVersion] = useState(0);
+  const [engines, setEngines] = useState<Engines | null>(null);
+  const [wantAi, setWantAi] = useState({ llm: true, stt: true });
+  const models = useAi((s) => s.overview?.models);
+  const llmModel = models?.find((m) => m.role === "chat" && m.default);
+  const sttModel = models?.find((m) => m.role === "stt" && m.default);
 
   useEffect(() => {
     api
@@ -33,6 +106,11 @@ export default function Onboarding() {
         setChosenFeeds(new Set(d.feeds.map((f) => f.url)));
       })
       .catch(toastError);
+    api
+      .checkEngines()
+      .then(setEngines)
+      .catch(() => setEngines({ llama: { path: null, ok: false }, whisper: { path: null, ok: false }, freeDiskGb: null }));
+    void useAi.getState().refresh().catch(() => {});
   }, []);
 
   const groups = useMemo(() => {
@@ -40,6 +118,12 @@ export default function Onboarding() {
     for (const f of feeds) m.set(f.group || "Other", [...(m.get(f.group || "Other") ?? []), f]);
     return [...m.entries()];
   }, [feeds]);
+
+  // What "Download and finish" will download: chosen, not there yet, and its engine works.
+  const toDownload = [
+    wantAi.llm && engines?.llama.ok ? llmModel : undefined,
+    wantAi.stt && engines?.whisper.ok ? sttModel : undefined,
+  ].filter((m): m is ModelInfo => !!m && !m.downloaded);
 
   const toggle = (set: Set<string>, key: string, update: (s: Set<string>) => void) => {
     const next = new Set(set);
@@ -61,6 +145,8 @@ export default function Onboarding() {
         notifyHighInterest: notifyHigh,
         launchAtLogin,
       });
+      // The AI downloads run in the background (progress: widget footer and Settings › AI).
+      for (const m of toDownload) void api.downloadModel(m.id).catch(toastError);
       setDone(true);
     } catch (e) {
       toastError(e);
@@ -202,6 +288,8 @@ export default function Onboarding() {
         </>
       )}
 
+      {step === 4 && <AiStep engines={engines} llm={llmModel} stt={sttModel} want={wantAi} setWant={setWantAi} />}
+
       <div className={styles.navRow}>
         {step > 0 && <button onClick={() => setStep(step - 1)}>Back</button>}
         <span className="spacer" />
@@ -216,9 +304,16 @@ export default function Onboarding() {
             Next
           </button>
         ) : (
-          <button className="primary" disabled={saving} onClick={finish}>
-            {saving ? "Saving…" : "Finish"}
-          </button>
+          <>
+            {toDownload.length > 0 && (
+              <button disabled={saving} onClick={() => setWantAi({ llm: false, stt: false })}>
+                Later
+              </button>
+            )}
+            <button className="primary" disabled={saving} onClick={finish}>
+              {saving ? "Saving…" : toDownload.length > 0 ? "Download and finish" : "Finish"}
+            </button>
+          </>
         )}
       </div>
       <Toasts />
