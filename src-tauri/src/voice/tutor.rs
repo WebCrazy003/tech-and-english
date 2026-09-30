@@ -24,14 +24,50 @@ impl CorrectionPolicy {
         }
     }
 
+    /// Two short examples: small models follow examples better than rules.
+    fn examples(self) -> &'static str {
+        match self {
+            CorrectionPolicy::Low => {
+                "Learner said: \"My team work on the new API since March.\"\n\
+                 {\"reply\": \"A new API is a big project! What will it do?\", \"correction\": null, \
+                 \"unknown_terms\": [], \"useful_phrases\": [\"a big project\"]}\n\
+                 (The meaning is clear, so there is no correction.)\n\
+                 Learner said: \"Um, I think, I think we use, uh, Kafka for the the events.\"\n\
+                 {\"reply\": \"Kafka is popular for events. Why did your team choose it?\", \"correction\": null, \
+                 \"unknown_terms\": [], \"useful_phrases\": []}"
+            }
+            _ => {
+                "Learner said: \"My team work on the new API since March.\"\n\
+                 {\"reply\": \"A new API, nice! We say: My team has been working on the new API since March. \
+                 With since, we use has been and the -ing form. Please say: My team has been working on the new API \
+                 since March.\", \"correction\": {\"original\": \"My team work on the new API since March.\", \
+                 \"corrected\": \"My team has been working on the new API since March.\", \"explanation\": \
+                 \"With since, use has been + -ing.\", \"ask_repeat\": true}, \"unknown_terms\": [], \
+                 \"useful_phrases\": []}\n\
+                 Learner said: \"Um, I think, I think we use, uh, Kafka for the the events.\"\n\
+                 {\"reply\": \"Kafka is popular for events. Why did your team choose it?\", \"correction\": null, \
+                 \"unknown_terms\": [], \"useful_phrases\": []}\n\
+                 (Fillers and repeated words are not mistakes.)"
+            }
+        }
+    }
+
     fn rules(self) -> &'static str {
         match self {
-            CorrectionPolicy::Low => "- Only correct mistakes that change the meaning or make it hard to understand.",
-            CorrectionPolicy::Medium => {
-                "- Correct important grammar mistakes (verb tense, subject–verb agreement, word order, wrong word) \
-                 and any mistake the learner has made before in this session."
+            CorrectionPolicy::Low => {
+                "- Only correct a mistake that changes the meaning or makes the sentence hard to understand.\n\
+                 - If the meaning is clear, do not correct small grammar mistakes: correction is null."
             }
-            CorrectionPolicy::High => "- Correct any clear grammar or word-choice mistake.",
+            CorrectionPolicy::Medium => {
+                "- Correct important grammar mistakes: a wrong verb form or tense, a missing -s after he/she/it, \
+                 a wrong verb pattern (want + to + verb), a wrong preposition, since/for, and any mistake the \
+                 learner has made before in this session."
+            }
+            CorrectionPolicy::High => {
+                "- Correct any clear grammar or word-choice mistake: verb forms and tenses, he/she/it + -s, \
+                 comparatives, verb patterns, prepositions, since/for, uncountable nouns, and the word order \
+                 of questions inside a sentence."
+            }
         }
     }
 }
@@ -209,14 +245,20 @@ pub fn system_prompt(level: u8, policy: CorrectionPolicy, topic: &Topic) -> Stri
          - If the learner asks about a word or says they don't understand, explain it simply with one example,\n  \
          then return to the question you asked before.\n\
          - If the learner asks you to explain simply, use shorter sentences and more common words.\n\
+         - The learner may talk about their own work, not only the article. Answer what they said.\n\
          \n\
          Correction rules ({policy}):\n\
+         - First check the learner's sentence for mistakes, then write your reply.\n\
          {correction_rules}\n\
          - The learner's words come from speech recognition. Ignore punctuation, capitalisation, filler words\n  \
          (um, uh), repeated words and false starts. Never correct those.\n\
          - Correct at most ONE mistake per turn — the most important one.\n\
          - When you correct: start the reply with the natural sentence, give a very short reason, then end the\n  \
          reply with \"Please say: <corrected sentence>\". Nothing comes after it: no question. Set ask_repeat = true.\n\
+         - If your reply says \"Please say:\", correction must not be null.\n\
+         \n\
+         Examples:\n\
+         {examples}\n\
          \n\
          Fields:\n\
          - correction: null, or original = the learner's whole sentence, corrected = the whole corrected sentence.\n\
@@ -229,8 +271,12 @@ pub fn system_prompt(level: u8, policy: CorrectionPolicy, topic: &Topic) -> Stri
         max = max_sentences(level),
         policy = policy.as_str().to_uppercase(),
         correction_rules = policy.rules(),
+        examples = policy.examples(),
     )
 }
+
+/// Lower than the reader chat: corrections should be consistent.
+pub const TEMPERATURE: f32 = 0.3;
 
 pub const OPENING_INSTRUCTION: &str =
     "Start the conversation: introduce the article in 2–3 sentences, then ask one easy question.";
@@ -255,6 +301,33 @@ pub fn user_message(instruction: &str, transcript: &str, mistakes: &[String]) ->
     }
     s.push_str(&format!("Learner said: \"{transcript}\""));
     ChatMsg::user(s)
+}
+
+/// The model sometimes writes "Please say: X" but leaves `correction` empty. When X is close to
+/// what the learner said (a corrected version of it), treat it as the correction.
+pub fn reconcile(out: &mut TutorTurnOut, transcript: &str) {
+    if out.correction.is_some() || transcript.trim().is_empty() {
+        return;
+    }
+    let lower = out.reply.to_lowercase();
+    let Some(i) = lower.rfind("please say:") else {
+        return;
+    };
+    let said = out.reply[i + "please say:".len()..]
+        .trim()
+        .trim_matches(|c: char| c == '"' || c == '\'' || c == '“' || c == '”')
+        .trim()
+        .to_string();
+    let close = super::similarity::similarity(transcript, &said) >= 0.5;
+    let changed = super::similarity::normalize(transcript) != super::similarity::normalize(&said);
+    if !said.is_empty() && close && changed {
+        out.correction = Some(Correction {
+            original: transcript.trim().to_string(),
+            corrected: said,
+            explanation: String::new(),
+            ask_repeat: true,
+        });
+    }
 }
 
 /// A short label for `session_mistakes`, e.g. "deploy → deployed".
@@ -316,7 +389,7 @@ mod tests {
                 topics: &["Rust".into()],
             },
         );
-        assert!(f.contains("likes: Rust.") && f.contains("At most 3 sentences") && f.contains("change the meaning"));
+        assert!(f.contains("likes: Rust.") && f.contains("At most 3 sentences") && f.contains("changes the meaning"));
     }
 
     #[test]
@@ -329,6 +402,25 @@ mod tests {
         );
         assert!(m.content.ends_with("Learner said: \"ok\""));
         assert_eq!(user_message("", "hi", &[]).content, "Learner said: \"hi\"");
+    }
+
+    #[test]
+    fn please_say_without_a_correction_is_reconciled() {
+        let mut o = TutorTurnOut {
+            reply: "We say discussed, without about. Please say: \"We discussed the new release.\"".into(),
+            ..Default::default()
+        };
+        reconcile(&mut o, "We discussed about the new release.");
+        let c = o.correction.unwrap();
+        assert_eq!(c.corrected, "We discussed the new release.");
+        assert!(c.ask_repeat);
+        // "Please say" with an unrelated sentence is not a correction.
+        let mut o = TutorTurnOut {
+            reply: "Please say: The article does not have a website link for the documentation.".into(),
+            ..Default::default()
+        };
+        reconcile(&mut o, "Can you tell me where is the documentation?");
+        assert!(o.correction.is_none());
     }
 
     #[test]

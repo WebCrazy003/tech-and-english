@@ -1,0 +1,30 @@
+{"input": "Yesterday I deploy the application.", "policy": "high", "expect_correction": true, "expect_contains": "deployed"}
+{"input": "I am agree with this idea.", "policy": "high", "expect_correction": true, "expect_contains": "I agree"}
+{"input": "He don't use Docker at work.", "policy": "medium", "expect_correction": true, "expect_contains": "doesn't"}
+{"input": "The model run on my laptop.", "policy": "medium", "expect_correction": true, "expect_contains": "runs"}
+{"input": "I have used Python since three years.", "policy": "medium", "expect_correction": true, "expect_contains": "for three years"}
+{"input": "It depends of the data size.", "policy": "high", "expect_correction": true, "expect_contains": "depends on"}
+{"input": "We discussed about the new release.", "policy": "high", "expect_correction": true, "expect_contains": "discussed the"}
+{"input": "I didn't understood the last part.", "policy": "medium", "expect_correction": true, "expect_contains": "didn't understand"}
+{"input": "Can you explain what is inference?", "policy": "high", "expect_correction": true, "expect_contains": "what inference is"}
+{"input": "Can you explain what is inference?", "policy": "low", "expect_correction": false}
+{"input": "I think it is very useful for developers.", "policy": "high", "expect_correction": false}
+{"input": "The data is stored in a lakehouse.", "policy": "high", "expect_correction": false}
+{"input": "Um, I, I think the, the model is fast.", "policy": "high", "expect_correction": false, "disfluent": true}
+{"input": "So yeah it's like faster than the old one.", "policy": "medium", "expect_correction": false, "disfluent": true}
+{"input": "She have two years of experience with Kubernetes.", "policy": "high", "expect_correction": true, "expect_contains": "has"}
+{"input": "We need more informations about the incident.", "policy": "high", "expect_correction": true, "expect_contains": "information"}
+{"input": "The pipeline failed because the data was late.", "policy": "high", "expect_correction": false}
+{"input": "I'm working here since 2021.", "policy": "medium", "expect_correction": true, "expect_contains": "have been working"}
+{"input": "Our team use Airflow for scheduling.", "policy": "medium", "expect_correction": true, "expect_contains": "uses"}
+{"input": "I didn't went to the meeting yesterday.", "policy": "medium", "expect_correction": true, "expect_contains": "didn't go"}
+{"input": "Uh, so, we, we moved the the database to the cloud.", "policy": "high", "expect_correction": false, "disfluent": true}
+{"input": "I think Spark is more faster than pandas for big data.", "policy": "high", "expect_correction": true, "expect_contains": "faster than"}
+{"input": "Can you tell me where is the documentation?", "policy": "high", "expect_correction": true, "expect_contains": "where the documentation is"}
+{"input": "The meeting is on Monday at ten o'clock.", "policy": "high", "expect_correction": false}
+{"input": "He explained me the problem.", "policy": "high", "expect_correction": true, "expect_contains": "explained the problem to me"}
+{"input": "I want learn more about dbt.", "policy": "medium", "expect_correction": true, "expect_contains": "want to learn"}
+{"input": "Yeah, I mean, it's, like, pretty cool, right?", "policy": "medium", "expect_correction": false, "disfluent": true}
+{"input": "We have many datas in the warehouse.", "policy": "high", "expect_correction": true, "expect_contains": "data"}
+{"input": "I am agree with this idea.", "policy": "low", "expect_correction": false}
+{"input": "My boss said me to fix the bug.", "policy": "medium", "expect_correction": true, "expect_contains": "told me"}

@@ -859,7 +859,7 @@ impl VoiceEngine {
         messages.extend(s.history.iter().cloned());
         messages.push(user.clone());
         let mut req = LlmRequest::new(messages, 450);
-        req.temperature = 0.4;
+        req.temperature = tutor::TEMPERATURE;
         req.json_schema = Some(tutor::schema());
         let token = CancellationToken::new();
         *self.turn_token.lock().unwrap() = Some(token.clone());
@@ -940,6 +940,7 @@ impl VoiceEngine {
                 return;
             }
         };
+        tutor::reconcile(&mut out, transcript);
         // The model does not always end with "Please say: …" when it asks for a repeat.
         if let Some(c) = out.correction.as_ref().filter(|c| c.ask_repeat)
             && !out.reply.to_lowercase().contains("please say")
