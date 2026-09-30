@@ -9,13 +9,16 @@ interface Progress {
 
 interface AiStore {
   status: AiStatus;
+  /** whisper-server (P5). */
+  sttStatus: AiStatus;
   overview: AiOverview | null;
   progress: Record<string, Progress>;
   refresh: () => Promise<void>;
 }
 
 export const useAi = create<AiStore>((set) => ({
-  status: { state: "unloaded", modelId: null, message: null },
+  status: { component: "llm", state: "unloaded", modelId: null, message: null },
+  sttStatus: { component: "stt", state: "unloaded", modelId: null, message: null },
   overview: null,
   progress: {},
   refresh: async () => {
@@ -30,7 +33,9 @@ export function startAiStore(): void {
   if (started) return;
   started = true;
   void useAi.getState().refresh().catch(() => {});
-  void onEvent<AiStatus>(EVENTS.aiStatus, (status) => useAi.setState({ status }));
+  void onEvent<AiStatus>(EVENTS.aiStatus, (status) =>
+    useAi.setState(status.component === "stt" ? { sttStatus: status } : { status }),
+  );
   void onEvent<{ modelId: string; bytes?: number; total?: number; done?: boolean; error?: string }>(
     EVENTS.aiDownload,
     (p) => {
@@ -43,7 +48,8 @@ export function startAiStore(): void {
         delete progress[p.modelId];
         return { progress };
       });
-      if (p.done) toast("AI model downloaded. You can use the AI now.");
+      const stt = useAi.getState().overview?.models.find((m) => m.id === p.modelId)?.role === "stt";
+      if (p.done) toast(stt ? "Speech model downloaded." : "AI model downloaded. You can use the AI now.");
       else if (p.error && p.error !== "Download cancelled") toast(`Download failed: ${p.error}`);
       void useAi.getState().refresh();
     },

@@ -204,6 +204,8 @@ export interface AiSettings {
 }
 
 export interface AiStatus {
+  /** llm = the chat model (llama-server), stt = speech to text (whisper-server). */
+  component?: "llm" | "stt";
   state: "unloaded" | "loading" | "ready" | "busy" | "error";
   modelId: string | null;
   message: string | null;

@@ -4,4 +4,5 @@
 pub mod intents;
 pub mod reply_stream;
 pub mod similarity;
+pub mod stt;
 pub mod tutor;

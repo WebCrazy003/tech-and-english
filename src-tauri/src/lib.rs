@@ -14,6 +14,7 @@ pub mod scheduler;
 pub mod seed;
 pub mod settings;
 pub mod shell;
+pub mod sidecar;
 pub mod state;
 pub mod voice;
 
@@ -87,7 +88,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let current = settings.get();
 
     // P2: local AI (llama-server sidecar), loaded on demand.
-    let ai_manager = ai::manager::AiManager::new(
+    let ai_manager = ai::manager::AiManager::llm(
         db.clone(),
         data_dir.clone(),
         settings.clone(),
@@ -95,10 +96,19 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         events.clone(),
         Arc::new(ai::manager::RealLauncher),
     );
-    tauri::async_runtime::block_on(ai_manager.cleanup_orphan());
-    ai_manager.spawn_idle_watch();
-    {
-        let m = ai_manager.clone();
+    // P5: whisper-server, started with a voice session.
+    let stt_manager = sidecar::SidecarManager::whisper(
+        db.clone(),
+        data_dir.clone(),
+        settings.clone(),
+        mode.clone(),
+        events.clone(),
+        Arc::new(sidecar::RealLauncher),
+    );
+    for m in [&ai_manager, &stt_manager] {
+        tauri::async_runtime::block_on(m.cleanup_orphan());
+        m.spawn_idle_watch();
+        let m = m.clone();
         mode.on_change(move |mode| {
             if mode == mode::Mode::Hibernate {
                 let m = m.clone();
@@ -133,6 +143,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         pick: pick.clone(),
         notify: notify.clone(),
         ai_manager: ai_manager.clone(),
+        stt_manager: stt_manager.clone(),
         ai_service: ai_service.clone(),
         vocab: vocab.clone(),
         downloader: Arc::new(ai::models::Downloader::default()),
@@ -289,12 +300,13 @@ pub fn run() {
                 api.prevent_exit();
             }
         }
-        // Never leave the AI engine running after Quit.
+        // Never leave the AI or speech engine running after Quit.
         RunEvent::Exit => {
             if let Some(state) = app.try_state::<AppState>() {
-                let m = state.ai_manager.clone();
+                let (llm, stt) = (state.ai_manager.clone(), state.stt_manager.clone());
                 tauri::async_runtime::block_on(async move {
-                    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), m.shutdown()).await;
+                    let both = async { tokio::join!(llm.shutdown(), stt.shutdown()) };
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), both).await;
                 });
             }
         }

@@ -52,7 +52,8 @@ pub async fn ai_overview(state: State<'_, AppState>) -> CmdResult<AiOverview> {
     let dir = state.ai_manager.data_dir().to_path_buf();
     Ok(AiOverview {
         status: state.ai_manager.status(),
-        engine_path: resolve_binary(s.ai.llama_server_path.as_deref(), &dir).map(|p| p.to_string_lossy().into_owned()),
+        engine_path: resolve_binary("llama-server", s.ai.llama_server_path.as_deref(), &dir)
+            .map(|p| p.to_string_lossy().into_owned()),
         models: models::list(
             &dir,
             s.ai.active_model.as_deref(),
@@ -108,8 +109,10 @@ pub async fn delete_model(state: State<'_, AppState>, model_id: String) -> CmdRe
         .into_iter()
         .find(|m| m.id == model_id)
         .ok_or_else(|| AppError::NotFound(format!("model {model_id}")))?;
-    if state.ai_manager.status().model_id.as_deref() == Some(&entry.id) {
-        state.ai_manager.shutdown().await;
+    for m in [&state.ai_manager, &state.stt_manager] {
+        if m.status().model_id.as_deref() == Some(&entry.id) {
+            m.shutdown().await;
+        }
     }
     let dir = models::models_dir(state.ai_manager.data_dir());
     for f in [dir.join(&entry.file), dir.join(format!("{}.part", entry.file))] {
@@ -120,12 +123,21 @@ pub async fn delete_model(state: State<'_, AppState>, model_id: String) -> CmdRe
 
 #[tauri::command]
 pub async fn set_active_model(state: State<'_, AppState>, model_id: String) -> CmdResult<()> {
-    state
-        .settings
-        .update(json!({ "ai": { "activeModel": model_id } }))
-        .await?;
+    let stt = models::catalog().iter().any(|m| m.id == model_id && m.role == "stt");
     // The next request starts the new model.
-    state.ai_manager.shutdown().await;
+    if stt {
+        state
+            .settings
+            .update(json!({ "voice": { "sttModel": model_id } }))
+            .await?;
+        state.stt_manager.shutdown().await;
+    } else {
+        state
+            .settings
+            .update(json!({ "ai": { "activeModel": model_id } }))
+            .await?;
+        state.ai_manager.shutdown().await;
+    }
     Ok(())
 }
 

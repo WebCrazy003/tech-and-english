@@ -24,6 +24,8 @@ pub struct AppState {
     pub pick: Arc<PickService>,
     pub notify: Arc<NotifyService>,
     pub ai_manager: Arc<AiManager>,
+    /// whisper-server (P5).
+    pub stt_manager: Arc<AiManager>,
     pub ai_service: Arc<AiService>,
     pub vocab: Arc<VocabService>,
     pub downloader: Arc<Downloader>,

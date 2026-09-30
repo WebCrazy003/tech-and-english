@@ -69,7 +69,7 @@ async fn summary_and_chat_on_real_model() {
     }
     let events = Arc::new(RecordingEventSink::default());
     let mode = ModeManager::load(db.clone(), events.clone()).await.unwrap();
-    let manager = AiManager::new(
+    let manager = AiManager::llm(
         db.clone(),
         data_dir,
         settings.clone(),
@@ -156,7 +156,7 @@ async fn define_term_on_real_model() {
     }
     let events = Arc::new(RecordingEventSink::default());
     let mode = ModeManager::load(db.clone(), events.clone()).await.unwrap();
-    let manager = AiManager::new(
+    let manager = AiManager::llm(
         db.clone(),
         dirs_data(),
         settings.clone(),
