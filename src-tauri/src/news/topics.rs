@@ -12,18 +12,31 @@ pub struct CompiledTopic {
     excluded: Vec<Regex>,
 }
 
-/// Hyphens and spaces are treated as equal ("tool-calling" == "tool calling").
+/// Hyphens and spaces are treated as equal ("tool-calling" == "tool calling"), and punctuation
+/// outside ASCII (— “ ” …) becomes a space, so [`bounded_regex`] only has to know ASCII.
 pub(crate) fn prep(text: &str) -> String {
-    text.replace('-', " ")
+    text.chars()
+        .map(|c| {
+            if c == '-' || (!c.is_ascii() && !c.is_alphanumeric()) {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect()
 }
+
+/// ASCII characters that are not a letter or a digit. After [`prep`], every other character
+/// that is not a letter or digit is one of these too.
+const NOT_ALNUM: &str = r"[\x00-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]";
 
 /// Case-insensitive regex that only matches `pattern` on word boundaries.
 /// Use it on text passed through [`prep`].
+///
+/// The boundary used to be `[^\p{L}\p{N}]`. That Unicode class made every compiled regex about
+/// 100–200 KB, and there is one regex per topic keyword (about 30 MB in total, P6 perf run).
 pub(crate) fn bounded_regex(pattern: &str) -> Option<Regex> {
-    Regex::new(&format!(
-        r"(?i)(?:^|[^\p{{L}}\p{{N}}])(?:{pattern})(?:$|[^\p{{L}}\p{{N}}])"
-    ))
-    .ok()
+    Regex::new(&format!(r"(?i)(?:^|{NOT_ALNUM})(?:{pattern})(?:$|{NOT_ALNUM})")).ok()
 }
 
 fn keyword_regex(kw: &str) -> Option<Regex> {
@@ -101,6 +114,24 @@ mod tests {
         assert!(match_topics(&t, "He said we maintain it", None).is_empty());
         assert_eq!(match_topics(&t, "New AI chip", None), vec![(1, 0.6)]);
         assert_eq!(match_topics(&t, "AI: the future", None), vec![(1, 0.6)]);
+    }
+
+    #[test]
+    fn unicode_punctuation_is_a_boundary_but_letters_are_not() {
+        let t = compile(&[topic(1, &["AI"], &[], 3)]);
+        assert_eq!(match_topics(&t, "AI—the next step", None).len(), 1, "em dash");
+        assert_eq!(match_topics(&t, "The “AI” bubble", None).len(), 1, "curly quotes");
+        assert_eq!(match_topics(&t, "Is it AI…", None).len(), 1, "ellipsis");
+        assert!(
+            match_topics(&t, "Das KAIßer Problem", None).is_empty(),
+            "inside a word with ß"
+        );
+        assert!(match_topics(&t, "naïveAI", None).is_empty());
+        assert!(
+            match_topics(&t, "AIé", None).is_empty(),
+            "a non-ASCII letter is not a boundary"
+        );
+        assert_eq!(match_topics(&t, "人工智能 AI 芯片", None).len(), 1);
     }
 
     #[test]

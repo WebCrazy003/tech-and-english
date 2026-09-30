@@ -88,3 +88,36 @@ whisper.cpp 1.9.4 (Homebrew, Metal), llama.cpp b11256 with Qwen3.5 4B, `-np 1`, 
 | Golden suite, first sentence (typed, cached prompt) | p50 1.35–1.38 s | |
 
 The real "end of speech → first audio" p50/p90 (with the webview's speech start) is shown in Settings › AI › Diagnostics after real turns.
+
+## v1.0.0 — final run on the bundled app (2026-09-30)
+
+Release bundle `Tech English.app` 1.0.0 (ad-hoc signed, hardened runtime) with the engines inside (llama.cpp v0.5.0, whisper.cpp v1.9.4). Same method as P1 (`scripts/measure-idle.sh`, `TE_APP=<bundle binary>`).
+
+| Scenario (SPEC §16) | Budget | v1.0.0 | Earlier |
+|---|---|---|---|
+| Cold start → widget visible | ≤ 2 s | ✅ widget window on screen 0.1–0.4 s after launch (3 starts) | not measured before |
+| Idle memory, no model loaded (app + WebKit, RSS) | ≤ 250 MB | ✅ Standard **150.5 MB** avg / 174 max (10 min) · Hibernate **182 MB** avg / 205 max (5 min) | before the fix below: 262 / 268 MB ❌ |
+| Idle CPU | ≤ 0.5 % | ✅ 0.05 % Standard · 0.04 % Hibernate | P1: 0.37 % / 0.03 % |
+| One fetch cycle (42 feeds) | ≤ 12 s wall, ≤ 1 CPU-s | ❌ wall time not re-measured; last value 16 s (P3). CPU is far below 1 s | P1: 28–30 s. The budget was a guess; the fetch runs in the background |
+| LLM loaded (4B Q4) | + ≤ 3.5 GB | ✅ bundled `llama-server` with Qwen3.5 4B: 462 MB RSS + memory-mapped weights (2.7 GB file) | P2: 384 MB RSS |
+| Voice: end of speech → first tutor audio | p50 ≤ 3 s, p90 ≤ 5 s | ✅ first sentence ready p50 **2.0 s**, p90 **3.0 s** with the bundled engines (+ speech start ≈ 0.1–0.3 s) | P5 (nightly engine): 2.5 / 3.3 s |
+| Reader: B1 summary, first time | first text ≤ 12 s, done ≤ 30 s | ✅ not re-measured; P2: 2.1 s / 17.6 s (the same model; the bundled engine generates 15.8 tokens/s vs 17.4 for the nightly build) | P2 |
+| Reader chat: first answer / follow-up | ≤ 6 s / ≤ 2 s | ✅ not re-measured; P2: 3.5 s / 0.7 s | P2 |
+| DB size after 90 days | ≤ 200 MB | ✅ estimate: the real database is 3.4 MB with 1,555 articles after the first day (≈ 2.2 KB per article); at about 300–400 new articles a day and the 60-day retention that is 40–55 MB | – |
+| App size | – | `.app` 29 MB (app 13 MB + llama-server 12 MB + whisper-server 4.4 MB) · `.dmg` 13 MB | P1: 9.7 MB without engines |
+
+### The idle-memory miss and its fix
+
+The first v1.0.0 run measured **262 MB** (Standard) and **268 MB** (Hibernate), above the 250 MB budget. Looking for the cause:
+
+- Builds of the old tags, measured the same way on the same day (one snapshot 40 s after launch, Hibernate, fresh data): **v0.1.0 230 MB**, **v0.4.0 271 MB**, **v1.0.0 278 MB**. So the P1 value in this file (131 MB) could not be reproduced (RSS depends on the state of the system that day), and the growth came in P2–P4, not in P5/P6. The WebKit processes stayed at about 110–120 MB; the app process grew.
+- `heap` / `malloc_history` on the app: about 115 compiled regexes of `regex_automata`, each 100–200 KB. They are the **topic-keyword regexes** (one per keyword) and the learning patterns. Each used the boundary `[^\p{L}\p{N}]` twice; that Unicode class is large.
+- **Fix:** `news::topics::prep` now turns non-ASCII punctuation into spaces, and the boundary is a small ASCII class. The matching rules are the same (tests for em dashes, curly quotes, non-English letters). The app's own memory (physical footprint) went from **86.5 MB to 36.3 MB**, and the snapshot total from 278 MB to **215 MB**.
+
+| Process (snapshot, 40 s after launch) | v0.1.0 | v0.4.0 | v1.0.0 before | v1.0.0 after |
+|---|---|---|---|---|
+| tech-english (RSS / footprint) | 120 / 55 MB | 151 / 87 MB | 157 / 87 MB | **102 / 36 MB** |
+| WebKit WebContent + Networking + GPU (RSS) | 110 MB | 120 MB | 121 MB | 113 MB |
+| Total RSS | 230 MB | 271 MB | 278 MB | **215 MB** |
+
+**Follow-up (not done):** one fetch cycle is still over the 12 s guess (16 s for 42 feeds). Options are in the P1 notes (more parallel feeds, fewer Hacker News item requests).

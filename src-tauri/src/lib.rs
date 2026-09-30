@@ -52,6 +52,10 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(LogGuard(logging::init(&log_dir)));
     diagnostics::install_panic_hook(log_dir.clone());
     diagnostics::prune_crashes(&log_dir);
+    // Test switch: crash on purpose at start, to check the crash report of a release build.
+    if std::env::var_os("TECH_ENGLISH_DEBUG_PANIC").is_some() {
+        panic!("debug panic (TECH_ENGLISH_DEBUG_PANIC)");
+    }
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting Tech English");
 
     let db = Db::open(&data_dir.join("app.db"))?;

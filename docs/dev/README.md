@@ -13,7 +13,7 @@ These documents turn [../SPEC.md](../SPEC.md) (the **what**) into ordered, testa
 | P3 | [P3-learning-and-sources.md](P3-learning-and-sources.md) | "Today's lesson" (learning materials) + add a source from an example URL | ✅ v0.3.0 |
 | P4 | [P4-words.md](P4-words.md) | Word popup (macOS dictionary + AI), Word Book, 10-item FSRS quiz | ✅ v0.4.0 |
 | P5 | [P5-voice-tutor.md](P5-voice-tutor.md) | Push-to-talk English tutor with corrections and session review | ✅ v0.5.0 |
-| P6 | [P6-packaging.md](P6-packaging.md) | Self-contained `.app` with bundled sidecars (ad-hoc signed) | |
+| P6 | [P6-packaging.md](P6-packaging.md) | Self-contained `.app` with bundled sidecars (ad-hoc signed) | ✅ v1.0.0 |
 
 Each phase depends on the ones before it:
 

@@ -173,6 +173,15 @@ AI features (optional, runs on this Mac)
 | T7 | Final perf run | T1–T3 | `docs/perf.md` v1.0.0 section |
 | T8 | Clean-machine test + README install guide | all | §9 checklist passes on a new macOS user account with Homebrew's binaries unlinked |
 
+> **As built (2026-09-30)** — see `docs/dev/notes/P6-sidecars.md`, `docs/licenses.md` and `docs/qa/P6.md`.
+> - **T1:** tags v0.5.0 (llama.cpp) and v1.9.4 (whisper.cpp); `LLAMA_CURL` no longer exists (`LLAMA_OPENSSL=OFF`, `LLAMA_USE_PREBUILT_UI=OFF` instead); minimum macOS is **13.3**. `externalBin` and the signing settings are in `src-tauri/tauri.bundle.conf.json` (passed with `--config`), so `cargo build`/`test` work without the built engines.
+> - **T2:** personal use → ad-hoc signing (§2.2) with the hardened runtime and `Entitlements.plist` (`audio-input`). `src-tauri/Info.plist` is merged by Tauri automatically. The Developer ID path (§2.1) was not set up.
+> - **T3:** onboarding step 5 with `check_engines` (`llama-server --version`, `whisper-server --help`); the widget footer shows "Downloading AI n %".
+> - **T4:** About is a page, **Settings › About** (tray › About Tech English opens it), not a separate window. The lists are made by `scripts/gen-licenses.py` (no extra tools to install) instead of `cargo about` / `license-checker`.
+> - **T5:** reduced motion, a text-size setting (`readingScale`: stories, quiz cards, talk transcript), contrast ≥ 4.5:1 for every text colour in both themes, shortcuts listed in Settings › About, robot-like voices grouped apart in the voice pickers.
+> - **T6:** panic hook → `crash-<unix time>.txt` in the log folder (5 kept); crash notice on the next start in Settings › About; **Copy diagnostics** (`pbcopy`); a route error page. `TECH_ENGLISH_DEBUG_PANIC=1` crashes at start to test a release build.
+> - **T8:** the DMG is made with `scripts/make-dmg.sh` (hdiutil; no Finder scripting). The clean-account test is a manual check.
+
 ## 9. Clean-machine checklist (`docs/qa/P6.md`)
 
 - [ ] Install from the DMG (drag to Applications); first launch passes Gatekeeper (notarized) or the documented ad-hoc steps

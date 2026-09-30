@@ -6,7 +6,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 label=$1; minutes=${2:-10}; flag=${3:-}
-app="src-tauri/target/release/bundle/macos/Tech English.app/Contents/MacOS/tech-english"
+# TE_APP=<path to the tech-english binary> measures another build.
+app="${TE_APP:-src-tauri/target/release/bundle/macos/Tech English.app/Contents/MacOS/tech-english}"
 dir=$(mktemp -d -t techenglish-perf)
 python3 scripts/seed-test-data.py "$dir" $flag >/dev/null
 
