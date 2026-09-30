@@ -86,9 +86,18 @@ With STT ≈ 0.2 s and TTS start ≈ 0.1–0.3 s, *end of speech → first audio
 - Sometimes the tutor gives a correction with `ask_repeat = true` but no "Please say" in the reply. → **Local fallback (spec delta):** when `correction.ask_repeat` is true and the reply doesn't contain "please say", the engine adds the sentence "Please say: <corrected>" itself.
 - A disfluent sentence ("Um, I, I think the, the model is fast.") got no correction ✅.
 
-## Microphone permission in `tauri dev`
+## Microphone permission
 
-Checked in T3, once capture exists (see the T3 notes below).
+- The app asks with AVFoundation (`AVCaptureDevice requestAccessForMediaType:`) before the first recording, and reads the status for the setup page. When the permission is denied, macOS gives a stream of zeros rather than an error, so a clip that is exactly zero also shows a microphone hint.
+- In `tauri dev` the binary is not bundled: macOS attributes the prompt to the app that started it (Terminal, IDE). Test the permission flow on the bundled app (QA item 1).
+
+## Golden suite (T7)
+
+30 typed cases (`tests/golden/tutor_corrections.jsonl`). Prompt changes needed to pass: mistake categories per policy, two examples in the system prompt (one correction, one disfluent sentence), "answer what they said", "if your reply says Please say, correction must not be null", temperature 0.3, and the local reconcile. Result: 23/30 → 26/30 → **27/30 (90 %)**, 0 disfluencies corrected; the same on a second run.
+
+## Live session (T14)
+
+`tests/live_voice.rs`: 20 `say` clips through the real engines (see `docs/perf.md`). All phases worked. Found: a late "correction" of an earlier sentence after the learner had already said it right → now dropped.
 
 ## Model catalog entries (`models.json`, role `stt`)
 

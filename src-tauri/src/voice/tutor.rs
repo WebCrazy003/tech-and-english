@@ -305,8 +305,23 @@ pub fn user_message(instruction: &str, transcript: &str, mistakes: &[String]) ->
 
 /// The model sometimes writes "Please say: X" but leaves `correction` empty. When X is close to
 /// what the learner said (a corrected version of it), treat it as the correction.
+///
+/// It also drops a "correction" of an earlier sentence when what the learner just said is
+/// already the corrected sentence.
 pub fn reconcile(out: &mut TutorTurnOut, transcript: &str) {
-    if out.correction.is_some() || transcript.trim().is_empty() {
+    if transcript.trim().is_empty() {
+        return;
+    }
+    let norm = super::similarity::normalize;
+    if out
+        .correction
+        .as_ref()
+        .is_some_and(|c| norm(&c.corrected) == norm(transcript))
+    {
+        out.correction = None;
+        return;
+    }
+    if out.correction.is_some() {
         return;
     }
     let lower = out.reply.to_lowercase();
@@ -420,6 +435,19 @@ mod tests {
             ..Default::default()
         };
         reconcile(&mut o, "Can you tell me where is the documentation?");
+        assert!(o.correction.is_none());
+        // The learner already said it right: a late correction of an earlier turn is dropped.
+        let mut o = TutorTurnOut {
+            reply: "Good.".into(),
+            correction: Some(Correction {
+                original: "I didn't understood the part about Iceberg.".into(),
+                corrected: "I didn't understand the part about Iceberg.".into(),
+                explanation: String::new(),
+                ask_repeat: true,
+            }),
+            ..Default::default()
+        };
+        reconcile(&mut o, "I didn't understand the part about iceberg");
         assert!(o.correction.is_none());
     }
 

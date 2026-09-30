@@ -1154,7 +1154,7 @@ Commands return `Result<T, AppError>`. `AppError` serializes to `{ code, message
 | P2 | `fetch_article_html`, `save_article_body`, `ai_status`, `list_models`, `download_model`, `cancel_download`, `delete_model`, `set_active_model`, `confirm_ai_start`, `unload_ai`, `get_derivative(article_id, kind)`, `list_article_chat`, `send_article_chat(article_id, text | action, channel)`, `clear_article_chat`, `cancel_job` |
 | P3 | `get_today_lesson`, `discover_feeds(url)` → candidates, `add_feed_from_example(url, feed_url, name, learning, save_article)`; `upsert_topic`/`upsert_feed` gain `learn`/`learning`; `list_articles` filter gains `learningOnly` |
 | P4 | `dictionary_lookup(term)`, `define_term`, `add_vocab_item`, `update_vocab_item`, `delete_vocab_item`, `list_vocab(filter)`, `get_vocab_item`, `list_vocab_keys`, `due_count`, `start_quiz`, `grade_quiz_item`, `finish_quiz`, `export_vocab_csv` |
-| P5 | `start_voice_session`, `start_recording`, `stop_recording`, `send_text_turn` (typed fallback), `end_voice_session`, `get_session_review`, `apply_session_review`, `list_conversations` |
+| P5 | `start_voice_session`, `start_recording`, `stop_recording`, `send_text_turn` (typed fallback), `start_drill`, `update_session_settings`, `end_voice_session`, `get_session_review`, `apply_session_review`, `list_conversations`, `get_conversation`, `get_active_session`, `voice_setup`, `delete_conversations`, `report_latency`, `voice_latency`; `set_mode` gains `force` (error `session_active` during a talk) |
 
 | Event | Payload |
 |---|---|
@@ -1164,8 +1164,11 @@ Commands return `Result<T, AppError>`. `AppError` serializes to `{ code, message
 | `article://needs-body` | `{ article_id }` |
 | `ai://status` | `{ component: "llm" \| "stt", state, progress? }` |
 | `ai://download` | `{ model_id, bytes, total }` |
-| `voice://transcript` | `{ text, final }` |
-| `voice://tutor` | `{ delta \| sentence, done }` |
+| `voice://active` | `{ active, conversationId }` (widget) |
+| `voice://level` | `{ rms }` (mic meter, ≤ 20/s) |
+| `voice://autostop` | `{ reason: "max_length" \| "silence" }` |
+
+Transcripts and tutor sentences travel on each command's Channel (P5 dev spec §8.3), not as global events.
 
 ---
 

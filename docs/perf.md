@@ -70,3 +70,21 @@ Idle memory and CPU are unchanged in kind: P3 adds no background process, only o
 | Release binary (all of P4, incl. the fsrs crate) | 10.9 → 11.3 MB (+0.4 MB) | fsrs ≤ 5 MB ✅ |
 | Build of fsrs and its new dependencies | 40 s | ≤ 60 s ✅ |
 | Background meaning fill | ≤ 10 items per minute; dictionary only unless the model is loaded | never loads the model ✅ |
+
+## P5 — voice tutor (2026-09-30)
+
+whisper.cpp 1.9.4 (Homebrew, Metal), llama.cpp b11256 with Qwen3.5 4B, `-np 1`, 8k context. Details: `docs/dev/notes/P5-whisper-and-tutor.md`.
+
+| What | Result | Budget |
+|---|---|---|
+| whisper-server start (base.en / small.en) | 0.25 s / 0.63 s | |
+| Transcription, base.en: 3 s / 6 s / 18 s clip | 0.13 / 0.19 / 0.36 s | |
+| Transcription, small.en: same clips | 0.38 / 0.56 / 1.0 s | |
+| whisper-server RSS | ≈ 350 MB (weights memory-mapped) | |
+| Session start, both engines cold + opening turn (live_voice) | 20 s | shown as "Loading AI…" |
+| **End of speech → first tutor sentence ready**, 18 spoken turns (live_voice) | **p50 2.46 s, p90 3.26 s** (STT p50 0.15 s, first token p50 1.34 s) | + speech start ≈ 0.1–0.3 s → p50 ≤ 3 s ✅, p90 ≤ 5 s ✅ |
+| Whole tutor answer (reply + JSON fields) | p50 8.2 s, p90 14.5 s | runs while the first sentences are spoken |
+| History trim (12 → 3 exchanges) | one re-read ≈ +3–4 s, about once every 10 turns | |
+| Golden suite, first sentence (typed, cached prompt) | p50 1.35–1.38 s | |
+
+The real "end of speech → first audio" p50/p90 (with the webview's speech start) is shown in Settings › AI › Diagnostics after real turns.

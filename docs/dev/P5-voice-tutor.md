@@ -322,9 +322,14 @@ on_user_input(text, source: Voice | Typed):
 | `update_session_settings` | `{ rate?, level?, correction? }` | Level and correction changes apply from the next turn |
 | `end_voice_session` | `{ reason: "user" \| "hibernate" \| "quit" }` | Sets `ended_at` and speaking seconds; releases the holds. If the reason is `user`, runs the review and returns `SessionReview`; otherwise `review_status` stays `pending`. |
 | `get_session_review` | `{ conversationId }` | Builds or returns the review (for pending sessions from history) |
-| `apply_session_review` | `{ conversationId, selectedIds: string[] }` | Creates the Word Book items → `review_status=done`. An empty selection → `skipped`. |
+| `apply_session_review` | `{ conversationId, selected: Suggestion[] }` | Creates the Word Book items → `review_status=done`. An empty selection → `skipped`. (As built: the chosen suggestions themselves are sent, not ids, so an LLM review does not have to be rebuilt after a restart.) |
 | `list_conversations` / `get_conversation` | – / `{ id }` | History |
-| `report_latency` | `{ turnId, ttsStartMs }` | Frontend timing (§10) |
+| `report_latency` | `{ turn, ttsStartMs }` | Frontend timing (§10); `turn` is the event turn number |
+| `voice_setup` | – | As built: default session settings, active session, speech model/engine found, mic permission |
+| `start_drill` | `{ word, channel }` | As built: the drill from a tapped word |
+| `get_active_session` | – | As built: for a reloaded window and the widget |
+| `delete_conversations` | – | As built: Settings › Data |
+| `voice_latency` | – | As built: p50/p90 for Settings › AI › Diagnostics |
 
 Channel `VoiceEvent`:
 
@@ -333,9 +338,10 @@ Channel `VoiceEvent`:
 | { kind: "ready"; conversationId: number }
 | { kind: "transcript"; text: string }
 | { kind: "notice"; text: string }                         // e.g. didn't hear anything
-| { kind: "tutorSentence"; text: string; rateDelta?: number }
-| { kind: "tutorDone"; turnId: number; correction?: Correction; phase: "discuss" | "awaitRepeat" | "drill" }
-| { kind: "localAction"; action: "replay" | "slower" | "faster" | "end" }
+| { kind: "tutorSentence"; turn: number; text: string; rateDelta?: number; rate?: number }   // rate: absolute (drill word 0.6)
+| { kind: "tutorDone"; turn: number; turnId: number; text: string; correction?: Correction; phase: "discuss" | "awaitRepeat" | "drill";
+    repeatTarget?: string; drill?: { word, hint, attempt, maxAttempts }; local: boolean }
+| { kind: "localAction"; action: "replay" | "slower" | "faster" | "end"; rate?: number }
 | { kind: "error"; code: string; message: string }
 ```
 
@@ -406,7 +412,7 @@ The frontend reports `tts_start` (the `speechSynthesis` `start` event of the fir
 | `/talk` | Setup form (SPEC §12.2) prefilled from settings; the topic chooser defaults to today's pick; **[Start conversation]**; "Pending reviews" list; link to history |
 | `/talk/session` | **Header:** article title, level chip, timer, speed −/+, correction frequency menu, **[End]**. **Transcript:** tutor bubbles (words tappable → popup with Explain / Add / Practise saying) and user bubbles. **Correction card:** original with the changed words struck through, corrected with them highlighted, the explanation, 🔊. **AwaitRepeat banner:** "Please say: …". **Drill card:** word, 🔊, hint, attempt dots. **Bottom:** large mic button (hold **Space**, or click to toggle), level meter, status text (Loading AI… / Your turn / Listening… / Transcribing… / Thinking… / Speaking…), collapsible typed input. |
 | `/talk/review/:id` | Stats row; three checkbox groups (Words & phrases / Corrections / Useful sentences), each item with its meaning or note; **[Add selected to Word Book]** **[Skip]** |
-| `/talk/history` | List (date, article, minutes, corrections, review status); open → read-only transcript; "Finish review" for pending ones |
+| `/talk/history` | List (date, article, minutes, corrections, review status); open → read-only transcript (`/talk/history/:id`); "Finish review" for pending ones |
 | Widget | While a session is active: the footer shows "🎙 Talking… [Open]" |
 
 **Frontend TTS queue (`features/talk/speechQueue.ts`):**
@@ -479,6 +485,8 @@ The seed cases (extend them to 30):
 | # | Task | Depends on | Done when |
 |---|---|---|---|
 | T0 | Spike: whisper-server, schema order, mic permission | – | Notes written; spec deltas applied; STT models in `models.json` |
+
+> **Status 2026-09-30:** T0–T14 done except the manual checks in `docs/qa/P5.md` (👤). Nav: Talk is ⌘5, Settings moved to ⌘6. The tray's Hibernate/Quit during a talk open `/talk/session?confirm=hibernate|quit`.
 | T1 | Migration 0005 + repos + retention | – | Migration/repo/retention tests |
 | T2 | SidecarManager refactor + WhisperSidecar | T0 | P2 tests green; whisper lifecycle tests with the fake launcher |
 | T3 | Audio capture + Info.plist + permission errors | T0 | Manual: meter moves; the mic indicator is off after stop; 60 s cap; silence notice. Unit: resample length ≈ duration × 16 k |
