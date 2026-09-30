@@ -20,7 +20,7 @@ use crate::state::AppState;
 
 pub const WIDGET: &str = "widget";
 pub const MAIN: &str = "main";
-const CARD_SIZE: (f64, f64) = (340.0, 260.0);
+const CARD_SIZE: (f64, f64) = (340.0, 280.0);
 const PILL_SIZE: (f64, f64) = (180.0, 36.0);
 const EDGE_INSET: f64 = 12.0;
 
@@ -289,7 +289,7 @@ fn ensure_main(app: &AppHandle) -> Option<WebviewWindow> {
     }
     WebviewWindowBuilder::new(app, MAIN, WebviewUrl::App("index.html".into()))
         .title("Tech English")
-        .inner_size(1000.0, 700.0)
+        .inner_size(1200.0, 780.0)
         .min_inner_size(760.0, 520.0)
         .visible(false)
         .build()

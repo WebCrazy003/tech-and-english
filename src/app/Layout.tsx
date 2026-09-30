@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api, type Mode } from "../lib/api";
 import { timeAgo } from "../lib/format";
 import { useApp } from "../stores/app";
@@ -69,6 +69,8 @@ function RefreshBox() {
 
 export default function Layout() {
   const navigate = useNavigate();
+  // The Reader needs the room: the sidebar becomes an icon rail and the page is not padded.
+  const reader = useLocation().pathname.startsWith("/reader/");
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return;
@@ -84,22 +86,27 @@ export default function Layout() {
 
   return (
     <div className={styles.shell}>
-      <nav className={styles.sidebar} aria-label="Main">
-        <div className={styles.brand}>Tech English</div>
+      <nav className={`${styles.sidebar} ${reader ? styles.rail : ""}`} aria-label="Main">
+        <div className={styles.brand}>{reader ? "TE" : "Tech English"}</div>
         {NAV.map((n) => (
-          <NavLink key={n.to} to={n.to} className={({ isActive }) => `${styles.nav} ${isActive ? styles.active : ""}`}>
+          <NavLink
+            key={n.to}
+            to={n.to}
+            title={n.label}
+            className={({ isActive }) => `${styles.nav} ${isActive ? styles.active : ""}`}
+          >
             <span className={styles.navIcon} aria-hidden>
               {n.icon}
             </span>
-            {n.label}
-            <span className={styles.kbd}>⌘{n.key}</span>
+            {!reader && n.label}
+            {!reader && <span className={styles.kbd}>⌘{n.key}</span>}
           </NavLink>
         ))}
         <div className="spacer" />
-        <RefreshBox />
-        <ModeSwitch />
+        {!reader && <RefreshBox />}
+        {!reader && <ModeSwitch />}
       </nav>
-      <main className={styles.content}>
+      <main className={`${styles.content} ${reader ? styles.contentFlush : ""}`}>
         <Outlet />
       </main>
       <Toasts />

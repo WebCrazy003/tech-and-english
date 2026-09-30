@@ -43,3 +43,11 @@ pub fn article_ids_since(conn: &Connection, since_date: &str) -> AppResult<Vec<i
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
+
+pub fn set_why(conn: &Connection, date: &str, why: &str, source: &str) -> AppResult<()> {
+    conn.execute(
+        "UPDATE daily_picks SET why = ?1, why_source = ?2 WHERE date = ?3",
+        params![why, source, date],
+    )?;
+    Ok(())
+}

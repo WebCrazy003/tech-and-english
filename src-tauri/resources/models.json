@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "qwen3.5-4b",
+      "role": "chat",
+      "displayName": "Qwen3.5 4B (Q4_K_M)",
+      "file": "Qwen3.5-4B-Q4_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+      "sizeBytes": 2740937888,
+      "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+      "contextLength": 8192,
+      "license": "Apache-2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3.5-4B",
+      "recommendedRamGb": 8,
+      "thinking": true,
+      "default": true
+    },
+    {
+      "id": "qwen3-4b-instruct-2507",
+      "role": "chat",
+      "displayName": "Qwen3 4B Instruct (2507) (Q4_K_M)",
+      "file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+      "sizeBytes": 2497281120,
+      "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597",
+      "contextLength": 8192,
+      "license": "Apache-2.0",
+      "licenseUrl": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507",
+      "recommendedRamGb": 8,
+      "thinking": false,
+      "default": false
+    },
+    {
+      "id": "gemma-4-e4b",
+      "role": "chat",
+      "displayName": "Gemma 4 E4B (Q4_K_M)",
+      "file": "gemma-4-E4B-it-Q4_K_M.gguf",
+      "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_K_M.gguf",
+      "sizeBytes": 4977171584,
+      "sha256": "85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87",
+      "contextLength": 8192,
+      "license": "Apache-2.0",
+      "licenseUrl": "https://huggingface.co/google/gemma-4-E4B-it",
+      "recommendedRamGb": 12,
+      "thinking": false,
+      "default": false
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ArticleListItem, type Mode } from "../../lib/api";
 import { shortAge, timeAgo } from "../../lib/format";
 import { useApp } from "../../stores/app";
+import { AiDot } from "../../features/ai/AiSetup";
 import { toastError } from "../../stores/toast";
 import styles from "./Widget.module.css";
 
@@ -75,8 +76,8 @@ function MoreMenu({ article, onDone }: { article: ArticleListItem; onDone: () =>
           <button role="menuitem" onClick={() => act(() => api.setSaved(article.id, !article.saved))}>
             {article.saved ? "Unsave" : "Save for later"}
           </button>
-          <button role="menuitem" onClick={() => act(() => api.showMain("/today"))}>
-            Open in app
+          <button role="menuitem" onClick={() => act(() => api.openArticle(article.id))}>
+            Open in browser
           </button>
           <button role="menuitem" onClick={() => act(() => api.recordInteraction(article.id, "not_interested"))}>
             Not interested
@@ -92,6 +93,9 @@ function ArticleCard({ label, article, why }: { label: string; article: ArticleL
   const meta = [article.primaryTopic, article.sourceName, shortAge(article.publishedAt ?? article.discoveredAt)]
     .filter(Boolean)
     .join(" · ");
+  const level = article.difficulty
+    ? `${article.difficulty[0].toUpperCase()}${article.difficulty.slice(1)} English${article.readingMinutes ? ` · ${article.readingMinutes} min read` : ""}`
+    : null;
   return (
     <div className={styles.pick}>
       <div className={styles.label}>{label}</div>
@@ -99,9 +103,10 @@ function ArticleCard({ label, article, why }: { label: string; article: ArticleL
         {article.title}
       </h2>
       <div className={styles.meta}>{meta}</div>
+      {level && <div className={styles.meta}>{level}</div>}
       {why && <p className={styles.why}>{why}</p>}
       <div className={styles.actions}>
-        <button className="primary" onClick={() => api.openArticle(article.id).catch(toastError)}>
+        <button className="primary" onClick={() => api.showMain(`/reader/${article.id}`).catch(toastError)}>
           Read
         </button>
         {article.saved && <span className={styles.saved}>★ Saved</span>}
@@ -190,6 +195,7 @@ export default function Widget() {
           Tech English
         </span>
         <span className="spacer" data-tauri-drag-region />
+        <AiDot />
         <ModeBadge mode={mode} />
         <button className={styles.iconBtn} onClick={collapse} aria-label="Collapse to a small bar" title="Collapse">
           ⌃

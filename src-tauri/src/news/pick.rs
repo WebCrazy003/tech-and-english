@@ -1,12 +1,14 @@
 //! Daily pick (SPEC §7.8).
 
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::Serialize;
 
 use super::NewsService;
+use super::body::BodyWaiters;
 use super::model::InteractionKind;
 use super::why;
 use crate::clock::{Clock, fmt_ts, parse_hhmm};
@@ -29,36 +31,51 @@ pub struct DailyPick {
     pub why: String,
 }
 
-/// Best eligible article at `now`: relevance ≥ 0.3, age ≤ `max_age_hours`, not hidden,
-/// not paywalled, not picked in the last 14 days. Highest score wins; ties → newest.
-pub fn best_candidate(
+/// Candidates tried in order when the pick is made (the next one is used if a story is paywalled).
+pub const PICK_ATTEMPTS: usize = 3;
+/// How long the pick waits for the frontend to extract a body.
+pub const BODY_WAIT: StdDuration = StdDuration::from_secs(30);
+
+/// Best eligible articles at `now`: relevance ≥ 0.3, age ≤ `max_age_hours`, not hidden,
+/// not paywalled, not picked in the last 14 days. Highest score first; ties → newest.
+pub fn best_candidates(
     conn: &Connection,
     now: DateTime<Utc>,
     today: NaiveDate,
     max_age_hours: i64,
-) -> AppResult<Option<i64>> {
+    limit: usize,
+) -> AppResult<Vec<i64>> {
     let cutoff = fmt_ts(now - Duration::hours(max_age_hours));
     let since_date = (today - Duration::days(REPEAT_EXCLUSION_DAYS)).to_string();
-    Ok(conn
-        .query_row(
-            "SELECT a.id FROM articles a
-             WHERE a.hidden = 0 AND a.body_status != 'paywalled' AND a.score IS NOT NULL
-               AND COALESCE((SELECT MAX(relevance) FROM article_topics WHERE article_id = a.id), 0) >= ?1
-               AND COALESCE(a.published_at, a.discovered_at) >= ?2
-               AND a.id NOT IN (SELECT article_id FROM daily_picks WHERE date >= ?3)
-             ORDER BY a.score DESC, a.discovered_at DESC, a.id DESC LIMIT 1",
-            rusqlite::params![MIN_RELEVANCE, cutoff, since_date],
+    let mut st = conn.prepare(
+        "SELECT a.id FROM articles a
+         WHERE a.hidden = 0 AND a.body_status != 'paywalled' AND a.score IS NOT NULL
+           AND COALESCE((SELECT MAX(relevance) FROM article_topics WHERE article_id = a.id), 0) >= ?1
+           AND COALESCE(a.published_at, a.discovered_at) >= ?2
+           AND a.id NOT IN (SELECT article_id FROM daily_picks WHERE date >= ?3)
+         ORDER BY a.score DESC, a.discovered_at DESC, a.id DESC LIMIT ?4",
+    )?;
+    let rows = st
+        .query_map(
+            rusqlite::params![MIN_RELEVANCE, cutoff, since_date, limit as i64],
             |r| r.get(0),
-        )
-        .optional()?)
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 /// 48 h window first, then relaxed to 72 h.
-pub fn select(conn: &Connection, now: DateTime<Utc>, today: NaiveDate) -> AppResult<Option<i64>> {
-    match best_candidate(conn, now, today, 48)? {
-        Some(id) => Ok(Some(id)),
-        None => best_candidate(conn, now, today, 72),
+pub fn candidates(conn: &Connection, now: DateTime<Utc>, today: NaiveDate, limit: usize) -> AppResult<Vec<i64>> {
+    let first = best_candidates(conn, now, today, 48, limit)?;
+    if first.is_empty() {
+        best_candidates(conn, now, today, 72, limit)
+    } else {
+        Ok(first)
     }
+}
+
+pub fn select(conn: &Connection, now: DateTime<Utc>, today: NaiveDate) -> AppResult<Option<i64>> {
+    Ok(candidates(conn, now, today, 1)?.into_iter().next())
 }
 
 fn why_for(conn: &Connection, article_id: i64, hn_points: Option<i64>) -> AppResult<String> {
@@ -98,6 +115,9 @@ pub struct PickService {
     events: Arc<dyn EventSink>,
     news: Arc<NewsService>,
     notify: Arc<NotifyService>,
+    /// Stops two ticks (or a tick and a manual refresh) from picking at the same time.
+    pick_lock: tokio::sync::Mutex<()>,
+    body_wait: StdDuration,
 }
 
 impl PickService {
@@ -116,7 +136,34 @@ impl PickService {
             events,
             news,
             notify,
+            pick_lock: tokio::sync::Mutex::new(()),
+            body_wait: BODY_WAIT,
         }
+    }
+
+    /// Shorter body wait (tests).
+    pub fn with_body_wait(mut self, d: StdDuration) -> Self {
+        self.body_wait = d;
+        self
+    }
+
+    /// Body status of an article, asking the frontend to extract it if needed.
+    /// `None` if the frontend didn't answer in time.
+    async fn ensure_body(&self, article_id: i64) -> AppResult<Option<String>> {
+        let status = self
+            .db
+            .call(move |c| Ok(articles::get_item(c, article_id)?.body_status))
+            .await?;
+        if status != "none" {
+            return Ok(Some(status));
+        }
+        let rx = self.news.body_waiters.register(article_id);
+        events::emit(
+            self.events.as_ref(),
+            events::NEEDS_BODY,
+            &serde_json::json!({ "articleId": article_id }),
+        );
+        Ok(BodyWaiters::wait(rx, self.body_wait).await)
     }
 
     pub async fn today(&self) -> AppResult<Option<DailyPick>> {
@@ -146,18 +193,35 @@ impl PickService {
         if now_local.time() < pick_time {
             return Ok(None);
         }
+        let _guard = self.pick_lock.lock().await;
         let (now, today) = (self.clock.now(), now_local.date_naive());
         let date = today.to_string();
+        let d = date.clone();
+        let (exists, cands) = self
+            .db
+            .call(move |c| Ok((picks::get(c, &d)?.is_some(), candidates(c, now, today, PICK_ATTEMPTS)?)))
+            .await?;
+        if exists || cands.is_empty() {
+            return Ok(None);
+        }
+        // P2: make sure the body is extracted; skip paywalled stories.
+        let mut chosen = None;
+        for id in &cands {
+            match self.ensure_body(*id).await?.as_deref() {
+                Some("paywalled") => continue,
+                _ => {
+                    chosen = Some(*id);
+                    break;
+                }
+            }
+        }
+        let id = chosen.unwrap_or(cands[0]);
         let created = self
             .db
             .tx(move |tx| {
                 if picks::get(tx, &date)?.is_some() {
                     return Ok(None);
                 }
-                let Some(id) = select(tx, now, today)? else {
-                    return Ok(None);
-                };
-                // P2: body extraction / paywall retry / difficulty happen here (post_select).
                 let item = articles::get_item(tx, id)?;
                 let why = why_for(tx, id, item.hn_points)?;
                 picks::insert(tx, &date, id, &why, &fmt_ts(now))?;
@@ -233,7 +297,8 @@ mod tests {
             h.events.clone(),
             h.news.clone(),
             notify,
-        );
+        )
+        .with_body_wait(std::time::Duration::from_millis(30));
         (h, pick, notifier, s)
     }
 
@@ -289,6 +354,80 @@ mod tests {
                 .unwrap()
                 .is_none_or(|p| p.article.id != preview.id)
         );
+    }
+
+    /// Acts like the widget: on `article://needs-body`, "extracts" a body. The first article
+    /// asked for is paywalled, the others are fine.
+    fn fake_frontend(h: &Harness) {
+        let news = h.news.clone();
+        let asked = Arc::new(std::sync::Mutex::new(Vec::<i64>::new()));
+        *h.events.hook.lock().unwrap() = Some(Box::new(move |event, payload| {
+            if event != events::NEEDS_BODY {
+                return;
+            }
+            let id = payload["articleId"].as_i64().unwrap();
+            let first = {
+                let mut a = asked.lock().unwrap();
+                a.push(id);
+                a.len() == 1
+            };
+            let news = news.clone();
+            tokio::spawn(async move {
+                let words = if first { 300 } else { 900 };
+                let text = "Local models run fast on laptops today. ".repeat(words / 7);
+                news.save_article_body(crate::news::SaveBody {
+                    article_id: id,
+                    text: Some(text),
+                    html: Some("<p>…</p>".into()),
+                    canonical_url: None,
+                    paywall_hint: first,
+                    failed: false,
+                })
+                .await
+                .unwrap();
+            });
+        }));
+    }
+
+    #[tokio::test]
+    async fn paywalled_candidate_is_skipped_and_difficulty_filled() {
+        let (h, pick, _n, _s) = setup("2026-09-29T09:00:00Z").await;
+        h.settings
+            .update(
+                json!({ "rankingWeights": { "topicRelevance": 0.0, "freshness": 0.45, "popularity": 0.15,
+                "sourcePreference": 0.2, "novelty": 0.1, "userHistory": 0.1 } }),
+            )
+            .await
+            .unwrap();
+        // Make both fixture stories eligible (AI + Kafka topics).
+        add_topic(&h, "Data", &["Kafka"]).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        fake_frontend(&h);
+        let pick = pick.with_body_wait(std::time::Duration::from_secs(5));
+        let p = pick.ensure_today().await.unwrap().expect("picked");
+        assert_eq!(p.article.body_status, "ok", "second candidate chosen");
+        assert!(p.article.difficulty.is_some());
+        assert!(p.article.reading_minutes.unwrap() >= 5);
+        let paywalled: i64 =
+            h.db.call(|c| {
+                Ok(c.query_row(
+                    "SELECT count(*) FROM articles WHERE body_status = 'paywalled'",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .await
+            .unwrap();
+        assert_eq!(paywalled, 1);
+    }
+
+    #[tokio::test]
+    async fn body_timeout_still_picks() {
+        let (h, pick, _n, _s) = setup("2026-09-29T09:00:00Z").await;
+        h.news.fetch_cycle(true).await.unwrap();
+        let p = pick.ensure_today().await.unwrap().expect("picked without a body");
+        assert_eq!(p.article.body_status, "none");
+        assert!(h.events.names().contains(&events::NEEDS_BODY.to_string()));
     }
 
     #[tokio::test]

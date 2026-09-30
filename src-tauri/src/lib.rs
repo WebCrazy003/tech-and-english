@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod clock;
 pub mod commands;
 pub mod db;
@@ -83,6 +84,30 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     ));
     let current = settings.get();
 
+    // P2: local AI (llama-server sidecar), loaded on demand.
+    let ai_manager = ai::manager::AiManager::new(
+        db.clone(),
+        data_dir.clone(),
+        settings.clone(),
+        mode.clone(),
+        events.clone(),
+        Arc::new(ai::manager::RealLauncher),
+    );
+    tauri::async_runtime::block_on(ai_manager.cleanup_orphan());
+    ai_manager.spawn_idle_watch();
+    {
+        let m = ai_manager.clone();
+        mode.on_change(move |mode| {
+            if mode == mode::Mode::Hibernate {
+                let m = m.clone();
+                tauri::async_runtime::spawn(async move { m.shutdown().await });
+            }
+        });
+    }
+    let provider: Arc<dyn ai::provider::LlmProvider> =
+        Arc::new(ai::provider::LocalLlamaProvider::new(ai_manager.clone()));
+    let ai_service = ai::service::AiService::new(db.clone(), clock.clone(), settings.clone(), events.clone(), provider);
+
     #[cfg(target_os = "macos")]
     if !current.show_dock_icon {
         app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -97,6 +122,9 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         news: news.clone(),
         pick: pick.clone(),
         notify: notify.clone(),
+        ai_manager: ai_manager.clone(),
+        ai_service: ai_service.clone(),
+        downloader: Arc::new(ai::models::Downloader::default()),
         quitting: AtomicBool::new(false),
         pending_route: Mutex::new(None),
     });
@@ -134,6 +162,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         news,
         pick,
         notify,
+        ai: Some(ai_service),
     })
     .spawn();
     Ok(())
@@ -195,6 +224,21 @@ pub fn run() {
             commands::news::get_today_pick,
             commands::news::get_pick_preview,
             commands::news::news_status,
+            commands::ai::ai_overview,
+            commands::ai::download_model,
+            commands::ai::cancel_download,
+            commands::ai::delete_model,
+            commands::ai::set_active_model,
+            commands::ai::start_ai,
+            commands::ai::unload_ai,
+            commands::ai::get_derivative,
+            commands::ai::list_article_chat,
+            commands::ai::send_article_chat,
+            commands::ai::clear_article_chat,
+            commands::ai::cancel_job,
+            commands::reader::get_reader_article,
+            commands::reader::fetch_article_html,
+            commands::reader::save_article_body,
             commands::shell::set_widget_style,
             commands::shell::show_main,
             commands::shell::take_pending_route,
@@ -205,8 +249,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Tech English");
 
-    app.run(|app, event| {
-        if let RunEvent::ExitRequested { api, .. } = event {
+    app.run(|app, event| match event {
+        RunEvent::ExitRequested { api, .. } => {
             let quitting = app
                 .try_state::<AppState>()
                 .is_none_or(|s| s.quitting.load(Ordering::SeqCst));
@@ -214,5 +258,15 @@ pub fn run() {
                 api.prevent_exit();
             }
         }
+        // Never leave the AI engine running after Quit.
+        RunEvent::Exit => {
+            if let Some(state) = app.try_state::<AppState>() {
+                let m = state.ai_manager.clone();
+                tauri::async_runtime::block_on(async move {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), m.shutdown()).await;
+                });
+            }
+        }
+        _ => {}
     });
 }

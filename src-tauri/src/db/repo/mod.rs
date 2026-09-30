@@ -1,5 +1,6 @@
 //! Plain data-access functions over `&Connection`. Business rules live in services.
 
+pub mod ai;
 pub mod app_state;
 pub mod articles;
 pub mod feeds;

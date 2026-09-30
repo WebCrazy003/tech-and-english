@@ -21,3 +21,27 @@ These are **release builds**, measured with `scripts/measure-idle.sh`. Each run 
 Notes:
 - **Main window on demand.** An earlier run, with the main window created at startup and kept hidden, used 215 MB on average (max 299 MB). The main window is now created when first opened and destroyed when closed, which saves one WebKit process.
 - **Fetch wall time.** The time is spent waiting on the network, mostly for a few slow feeds and the Hacker News item requests (up to 110 small requests). It runs in the background every 20 minutes, so users don't notice it. The ≤ 12 s budget was a guess made before measuring. Options if it matters later: more concurrency (4 → 8 feeds), or fewer HN item fetches.
+
+## P2 — model benchmark (2026-09-29)
+
+Engine: llama.cpp b11256 (official macOS arm64 build), `-ngl 99`. All models Q4_K_M from unsloth, Apache-2.0.
+
+**Speed** (`llama-bench`):
+
+| Model | File | pp512 | pp2048 | tg128 |
+|---|---|---|---|---|
+| Qwen3.5 4B | 2.74 GB | 209 t/s | 207 t/s | 17.4 t/s |
+| Qwen3 4B Instruct 2507 | 2.50 GB | 236 t/s | 222 t/s | 21.4 t/s |
+| Gemma 4 E4B | 4.98 GB | 211 t/s | 205 t/s | 17.1 t/s |
+
+**App-level** (`cargo test --release --test live_ai`: 5-paragraph DuckDB article, B1 summary + 3 chat turns, warm file cache):
+
+| Model | Start | Summary: first text / done | Chat: first answer / follow-ups (first text) | Quality notes |
+|---|---|---|---|---|
+| **Qwen3.5 4B** (default) | 4.3 s | 2.1 s / 17.6 s | 3.5 s / 0.7 s | Plain B1 prose, accurate, good key words. Marks the general answer "(not from the article)" correctly. |
+| Qwen3 4B Instruct 2507 | 3.8 s | 1.8 s / 13.7 s | 2.7 s / 0.2 s | Fastest. Adds headings ("Main points:"), writes "(from the article)" / "(not from the article)" in the wrong places, and adds facts that are not in the article (Iceberg "versioning"). |
+| Gemma 4 E4B | 7.1 s | 2.4 s / 17.6 s | 3.5 s / 0.4 s | Very learner-friendly ("data questions (analytical queries)"), but marks an article-based answer "(not from the article)". Double the memory. |
+
+**Decision:** Qwen3.5 4B stays the default (`models.json` `default: true`). The other two remain in the catalog as options in Settings › AI.
+
+**Budgets (SPEC §16, P2 rows):** B1 summary first time: first text 2.1 s (≤ 12 s ✅), complete 17.6 s (≤ 30 s ✅). Chat: first answer 3.5 s (≤ 6 s ✅), follow-up 0.7 s (≤ 2 s ✅).

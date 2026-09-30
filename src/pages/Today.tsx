@@ -10,6 +10,7 @@ import styles from "./pages.module.css";
 
 function PickCard({ article, why, label }: { article: ArticleListItem; why?: string; label: string }) {
   const refreshPick = useApp((s) => s.refreshPick);
+  const navigate = useNavigate();
   const after = () => void refreshPick();
   return (
     <div className={styles.twoCol}>
@@ -22,12 +23,21 @@ function PickCard({ article, why, label }: { article: ArticleListItem; why?: str
           <span>·</span>
           <span>{timeAgo(article.publishedAt ?? article.discoveredAt)}</span>
           {article.hnPoints != null && <span>· ▲ {article.hnPoints} on Hacker News</span>}
+          {article.difficulty && (
+            <span>
+              · {article.difficulty[0].toUpperCase() + article.difficulty.slice(1)} English
+              {article.readingMinutes ? ` · ${article.readingMinutes} min read` : ""}
+            </span>
+          )}
         </div>
         {article.description && <p className={styles.desc}>{article.description}</p>}
         {why && <div className={styles.why}>💡 {why}</div>}
         <div className={styles.actions}>
-          <button className="primary" onClick={() => api.openArticle(article.id).then(after).catch(toastError)}>
-            Read in browser
+          <button className="primary" onClick={() => navigate(`/reader/${article.id}`)}>
+            Read
+          </button>
+          <button className="ghost" onClick={() => api.openArticle(article.id).then(after).catch(toastError)}>
+            Open in browser ↗
           </button>
           <button onClick={() => api.setSaved(article.id, !article.saved).then(after).catch(toastError)}>
             {article.saved ? "★ Saved" : "☆ Save"}
@@ -48,7 +58,7 @@ function PickCard({ article, why, label }: { article: ArticleListItem; why?: str
           </button>
         </div>
         <p className="faint" style={{ fontSize: 12, marginTop: 14, marginBottom: 0 }}>
-          Easy summary, listening and voice discussion come in later versions.
+          In the reader: B1 summary, Easy English, and an AI chat about the story.
         </p>
       </section>
       {article.breakdown && (

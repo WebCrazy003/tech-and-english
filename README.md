@@ -4,7 +4,7 @@ A local-first macOS menu-bar app. It picks one interesting tech story a day for 
 
 - Product spec: [docs/SPEC.md](docs/SPEC.md)
 - Development plan per phase: [docs/dev/](docs/dev/README.md)
-- Current phase: **P1 — App shell & News** (no AI yet)
+- Current phase: **P2 — Reader & AI chat** (P1 done, v0.1.0)
 
 ## Requirements
 
@@ -29,11 +29,21 @@ TECH_ENGLISH_DATA_DIR=/tmp/te-test npm run tauri dev
 
 **Preview the UI in a normal browser** (fake data, no Rust): run `npm run dev` and open http://localhost:1420/ or http://localhost:1420/widget.html. Add `?fresh` to start at the setup screen.
 
+## AI setup (local, free)
+
+The Reader's summaries and chat use a local model through llama.cpp's `llama-server`:
+
+1. **Engine.** The app looks for `llama-server` in its data folder (`…/com.techenglish.app/bin/*/llama-server`), in Homebrew, and in your PATH. Homebrew has no build for macOS 14 on this setup, so the official build from https://github.com/ggml-org/llama.cpp/releases (`llama-bXXXX-bin-macos-arm64.tar.gz`) is unpacked into the data folder.
+2. **Model.** Settings › AI → Download (Qwen3.5 4B, 2.7 GB, recommended). Two alternatives are listed there too.
+
+The model starts when you first use the AI and unloads after 10 idle minutes or in Hibernate mode.
+
 ## Check and test
 
 ```bash
 scripts/check.sh                                   # fmt, clippy, all tests, typecheck, lint
 cargo test --manifest-path src-tauri/Cargo.toml --test live_feeds -- --ignored --nocapture   # live feeds (internet)
+TE_MODEL=qwen3.5-4b cargo test --manifest-path src-tauri/Cargo.toml --release --test live_ai -- --ignored --nocapture   # real model
 scripts/measure-idle.sh "Standard" 10              # idle memory/CPU of the release build
 ```
 

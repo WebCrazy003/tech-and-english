@@ -4,9 +4,18 @@ import ReactDOM from "react-dom/client";
 import "./styles/theme.css";
 import Widget from "./windows/widget/Widget";
 import { startAppStore } from "./stores/app";
+import { startAiStore } from "./stores/ai";
+import { EVENTS, onEvent } from "./lib/api";
+import { ensureBody } from "./lib/extract";
 import Toasts from "./components/Toasts";
 
 startAppStore();
+startAiStore();
+
+// The daily pick waits for the article text; the widget is always loaded, so it does the extraction.
+void onEvent<{ articleId: number }>(EVENTS.needsBody, ({ articleId }) => {
+  void ensureBody(articleId).catch(() => {});
+});
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

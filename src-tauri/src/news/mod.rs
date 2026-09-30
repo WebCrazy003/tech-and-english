@@ -1,3 +1,5 @@
+pub mod body;
+pub mod difficulty;
 pub mod hackernews;
 pub mod ingest;
 pub mod model;
@@ -56,6 +58,8 @@ pub struct NewsService {
     fetch_lock: tokio::sync::Mutex<()>,
     offline: Mutex<OfflineState>,
     hn_base: String,
+    /// The daily pick waits here for the frontend to extract a body.
+    pub body_waiters: body::BodyWaiters,
 }
 
 /// Is `feed` due for a fetch at `now`? The interval doubles per consecutive failure (max 6 h).
@@ -90,6 +94,7 @@ impl NewsService {
             fetch_lock: tokio::sync::Mutex::new(()),
             offline: Mutex::new(OfflineState::default()),
             hn_base: hn_base.unwrap_or_default(),
+            body_waiters: body::BodyWaiters::default(),
         }))
     }
 
@@ -322,6 +327,67 @@ impl NewsService {
     pub async fn test_feed(&self, url: &str) -> AppResult<rss::FeedTestResult> {
         rss::test_feed(self.http.as_ref(), url).await
     }
+
+    /// Fetch the article page for the frontend's Readability pass.
+    pub async fn fetch_article_html(&self, article_id: i64) -> AppResult<body::FetchedHtml> {
+        let item = self.db.call(move |c| articles::get_item(c, article_id)).await?;
+        body::fetch_html(self.http.as_ref(), &item.url).await
+    }
+
+    /// Store the extracted body: status, difficulty, better topic match; wake the pick waiters.
+    pub async fn save_article_body(&self, input: SaveBody) -> AppResult<articles::ArticleListItem> {
+        let report = input.text.as_deref().map(difficulty::analyze);
+        let word_count = report.as_ref().map(|r| r.word_count).unwrap_or(0);
+        let id = input.article_id;
+        let topics = self.compiled_topics();
+        let item = self
+            .db
+            .tx(move |tx| {
+                let current = articles::get_item(tx, id)?;
+                let desc_len = current.description.as_deref().map(str::len).unwrap_or(0);
+                let status = body::body_status(word_count, desc_len, input.paywall_hint, input.failed);
+                let keep = status == "ok";
+                articles::save_body(
+                    tx,
+                    id,
+                    &articles::BodyUpdate {
+                        status,
+                        text: input.text.as_deref().filter(|_| keep),
+                        html: input.html.as_deref().filter(|_| keep),
+                        canonical_url: input.canonical_url.as_deref(),
+                        word_count: keep.then_some(word_count),
+                        difficulty: report.as_ref().filter(|_| keep).map(|r| r.level.as_str()),
+                    },
+                )?;
+                if keep {
+                    ingest::rematch(tx, id, &topics)?;
+                }
+                articles::get_item(tx, id)
+            })
+            .await?;
+        tracing::debug!(article = id, status = %item.body_status, words = word_count, "body saved");
+        self.body_waiters.wake(id, &item.body_status);
+        events::emit(
+            self.events.as_ref(),
+            events::ARTICLE_BODY,
+            &json!({ "articleId": id, "status": item.body_status }),
+        );
+        Ok(item)
+    }
+}
+
+/// What the frontend sends after running Readability (P2 dev spec §3).
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveBody {
+    pub article_id: i64,
+    pub text: Option<String>,
+    pub html: Option<String>,
+    pub canonical_url: Option<String>,
+    #[serde(default)]
+    pub paywall_hint: bool,
+    #[serde(default)]
+    pub failed: bool,
 }
 
 #[cfg(test)]

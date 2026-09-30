@@ -8,7 +8,10 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Embedded migrations. Never edit a shipped migration — add a new one.
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("../../migrations/0001_init.sql")),
+    (2, include_str!("../../migrations/0002_reader_ai.sql")),
+];
 
 /// Single SQLite connection shared by all services. rusqlite is synchronous, so
 /// every call runs on the blocking thread pool.
@@ -106,6 +109,6 @@ mod tests {
             })
             .await
             .unwrap();
-        assert!(n >= 11);
+        assert!(n >= 13);
     }
 }

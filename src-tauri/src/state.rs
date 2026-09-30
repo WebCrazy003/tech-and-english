@@ -1,6 +1,9 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
+use crate::ai::manager::AiManager;
+use crate::ai::models::Downloader;
+use crate::ai::service::AiService;
 use crate::clock::Clock;
 use crate::db::Db;
 use crate::events::EventSink;
@@ -19,6 +22,9 @@ pub struct AppState {
     pub news: Arc<NewsService>,
     pub pick: Arc<PickService>,
     pub notify: Arc<NotifyService>,
+    pub ai_manager: Arc<AiManager>,
+    pub ai_service: Arc<AiService>,
+    pub downloader: Arc<Downloader>,
     /// Set by the tray Quit item; any other exit request is prevented.
     pub quitting: AtomicBool,
     /// Route the main window should open when it (re)loads.

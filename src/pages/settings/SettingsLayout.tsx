@@ -6,6 +6,7 @@ const LINKS = [
   { to: "/settings/topics", label: "Topics" },
   { to: "/settings/feeds", label: "News sources" },
   { to: "/settings/notifications", label: "Notifications" },
+  { to: "/settings/ai", label: "AI" },
 ];
 
 export default function SettingsLayout() {

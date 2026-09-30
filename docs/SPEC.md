@@ -1185,7 +1185,8 @@ Commands return `Result<T, AppError>`. `AppError` serializes to `{ code, message
 | One fetch cycle, ~35 feeds (the default set) | ≤ 12 s wall time; ≤ 1 CPU-second |
 | LLM loaded (4B Q4) | + ≤ 3.5 GB |
 | Voice: end of speech → first tutor audio | p50 ≤ 3 s, p90 ≤ 5 s |
-| Reader: B1 summary for a 1,500-word article (4B) | first text ≤ 4 s; complete ≤ 20 s |
+| Reader: B1 summary (M1, 4B model; measured in the P2 spike) | cached: instant · first time: first text ≤ 12 s, complete ≤ 30 s |
+| Reader chat: first answer / follow-up | ≤ 6 s / ≤ 2 s to the first token |
 | DB size after 90 days of normal use | ≤ 200 MB |
 
 Each phase's acceptance includes recording the measured numbers in `docs/perf.md`.

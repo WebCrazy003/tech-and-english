@@ -9,6 +9,10 @@ pub const PICK_CHANGED: &str = "pick://changed";
 pub const MODE_CHANGED: &str = "mode://changed";
 pub const SETTINGS_CHANGED: &str = "settings://changed";
 pub const NAVIGATE: &str = "navigate";
+pub const ARTICLE_BODY: &str = "article://body";
+pub const NEEDS_BODY: &str = "article://needs-body";
+pub const AI_STATUS: &str = "ai://status";
+pub const AI_DOWNLOAD: &str = "ai://download";
 
 pub trait EventSink: Send + Sync {
     fn emit_value(&self, event: &str, payload: Value);
@@ -31,10 +35,13 @@ impl EventSink for TauriEventSink {
     }
 }
 
-/// Test sink that records every event.
+type Hook = Box<dyn Fn(&str, &Value) + Send + Sync>;
+
+/// Test sink that records every event. An optional hook can act like the frontend.
 #[derive(Default)]
 pub struct RecordingEventSink {
     pub events: Mutex<Vec<(String, Value)>>,
+    pub hook: Mutex<Option<Hook>>,
 }
 
 impl RecordingEventSink {
@@ -45,6 +52,9 @@ impl RecordingEventSink {
 
 impl EventSink for RecordingEventSink {
     fn emit_value(&self, event: &str, payload: Value) {
+        if let Some(hook) = self.hook.lock().unwrap().as_ref() {
+            hook(event, &payload);
+        }
         self.events.lock().unwrap().push((event.to_string(), payload));
     }
 }

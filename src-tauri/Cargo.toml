@@ -19,8 +19,8 @@ tauri-plugin-notification = "2.5"
 tauri-plugin-autostart = "2.6"
 tauri-plugin-single-instance = "2.5"
 tauri-plugin-opener = "2.6"
-tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "time", "sync"] }
-reqwest = { version = "0.13", default-features = false, features = ["native-tls", "gzip", "json", "http2"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "time", "sync", "process", "fs", "io-util"] }
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "gzip", "json", "http2", "stream"] }
 feed-rs = "3.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
@@ -34,6 +34,11 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
+sysinfo = "0.39"
+sha2 = "0.11"
+tokio-util = "0.7"
+rand = "0.9"
+libc = "0.2"
 
 [dev-dependencies]
 wiremock = "0.6"

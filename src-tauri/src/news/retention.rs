@@ -1,4 +1,4 @@
-//! Daily cleanup (SPEC §7.10). P2/P4 extend the "protected" conditions for their tables.
+//! Daily cleanup (SPEC §7.10). Later phases extend the "protected" conditions for their tables.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{Connection, params};
@@ -20,7 +20,8 @@ pub fn run(conn: &Connection, now: DateTime<Utc>) -> AppResult<RetentionStats> {
     let clear_before = fmt_ts(now - Duration::days(CLEAR_BODY_AFTER_DAYS));
     let deleted = conn.execute(
         "DELETE FROM articles WHERE discovered_at < ?1 AND saved = 0
-           AND id NOT IN (SELECT article_id FROM daily_picks)",
+           AND id NOT IN (SELECT article_id FROM daily_picks)
+           AND NOT EXISTS (SELECT 1 FROM article_chats c WHERE c.article_id = articles.id)",
         params![delete_before],
     )?;
     let bodies_cleared = conn.execute(
@@ -62,6 +63,11 @@ mod tests {
             add(c, 3, "2026-07-01T00:00:00Z", false); // old but was a pick → keep
             add(c, 4, "2026-09-10T00:00:00Z", false); // 19 days → clear body
             add(c, 5, "2026-09-28T00:00:00Z", false); // recent → untouched
+            add(c, 6, "2026-07-01T00:00:00Z", false); // old but has an AI chat → keep
+            c.execute(
+                "INSERT INTO article_chats(article_id, role, content, created_at) VALUES (6, 'user', 'hi', 'x')",
+                [],
+            )?;
             c.execute(
                 "INSERT INTO daily_picks(date, article_id, why, created_at) VALUES ('2026-07-01', 3, 'w', 'x')",
                 [],
@@ -72,7 +78,7 @@ mod tests {
                 .prepare("SELECT id FROM articles ORDER BY id")?
                 .query_map([], |r| r.get(0))?
                 .collect::<Result<_, _>>()?;
-            assert_eq!(ids, vec![2, 3, 4, 5]);
+            assert_eq!(ids, vec![2, 3, 4, 5, 6]);
             let (body, status): (Option<String>, String) =
                 c.query_row("SELECT body_text, body_status FROM articles WHERE id = 4", [], |r| {
                     Ok((r.get(0)?, r.get(1)?))

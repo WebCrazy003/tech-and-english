@@ -115,12 +115,18 @@ pub fn set_source_name(conn: &Connection, id: i64, name: &str) -> AppResult<()> 
 }
 
 /// Title and description, used for topic matching.
+/// Title, and description plus the first 500 chars of the body (if extracted), for topic matching.
 pub fn match_text(conn: &Connection, id: i64) -> AppResult<(String, Option<String>)> {
-    Ok(
-        conn.query_row("SELECT title, description FROM articles WHERE id = ?1", [id], |r| {
-            Ok((r.get(0)?, r.get(1)?))
-        })?,
-    )
+    let (title, desc, body): (String, Option<String>, Option<String>) = conn.query_row(
+        "SELECT title, description, substr(body_text, 1, 500) FROM articles WHERE id = ?1",
+        [id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let text = match (desc, body) {
+        (Some(d), Some(b)) => Some(format!("{d} {b}")),
+        (d, b) => d.or(b),
+    };
+    Ok((title, text))
 }
 
 /// Replace the topic matches of an article. The primary topic is the most relevant one.
@@ -245,6 +251,11 @@ pub struct ArticleListItem {
     pub read_status: String,
     pub saved: bool,
     pub hidden: bool,
+    /// "none" | "ok" | "failed" | "paywalled"
+    pub body_status: String,
+    /// "easy" | "medium" | "hard", once the body is extracted
+    pub difficulty: Option<String>,
+    pub reading_minutes: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -268,7 +279,8 @@ pub struct Page<T> {
 }
 
 const ITEM_SELECT: &str = "SELECT a.id, a.url, a.title, a.source_name, a.description, a.published_at, a.discovered_at,
-    t.name, a.score, a.score_breakdown, a.hn_id, a.hn_points, a.hn_comments, a.read_status, a.saved, a.hidden
+    t.name, a.score, a.score_breakdown, a.hn_id, a.hn_points, a.hn_comments, a.read_status, a.saved, a.hidden,
+    a.body_status, a.difficulty, a.word_count
     FROM articles a LEFT JOIN topics t ON t.id = a.primary_topic_id";
 
 fn item_from_row(r: &Row) -> rusqlite::Result<ArticleListItem> {
@@ -291,6 +303,11 @@ fn item_from_row(r: &Row) -> rusqlite::Result<ArticleListItem> {
         read_status: r.get(13)?,
         saved: r.get(14)?,
         hidden: r.get(15)?,
+        body_status: r.get(16)?,
+        difficulty: r.get(17)?,
+        reading_minutes: r
+            .get::<_, Option<u32>>(18)?
+            .map(crate::news::difficulty::reading_minutes),
     })
 }
 
@@ -438,4 +455,48 @@ pub fn source_feed_ids(conn: &Connection, id: i64) -> AppResult<Vec<i64>> {
 
 pub fn count(conn: &Connection) -> AppResult<i64> {
     Ok(conn.query_row("SELECT count(*) FROM articles", [], |r| r.get(0))?)
+}
+
+// ---------------------------------------------------------------- body (P2 reader)
+
+pub struct BodyUpdate<'a> {
+    pub status: &'a str,
+    pub text: Option<&'a str>,
+    pub html: Option<&'a str>,
+    pub canonical_url: Option<&'a str>,
+    pub word_count: Option<u32>,
+    pub difficulty: Option<&'a str>,
+}
+
+pub fn save_body(conn: &Connection, id: i64, b: &BodyUpdate) -> AppResult<()> {
+    let n = conn.execute(
+        "UPDATE articles SET body_status = ?1, body_text = ?2, body_html = ?3,
+           canonical_url = COALESCE(?4, canonical_url), word_count = ?5, difficulty = ?6 WHERE id = ?7",
+        params![
+            b.status,
+            b.text,
+            b.html,
+            b.canonical_url,
+            b.word_count,
+            b.difficulty,
+            id
+        ],
+    )?;
+    if n == 0 {
+        return Err(AppError::NotFound(format!("article {id}")));
+    }
+    Ok(())
+}
+
+/// Sanitized HTML body and body status for the Reader.
+pub fn body_html(conn: &Connection, id: i64) -> AppResult<(String, Option<String>)> {
+    Ok(
+        conn.query_row("SELECT body_status, body_html FROM articles WHERE id = ?1", [id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?,
+    )
+}
+
+pub fn body_text(conn: &Connection, id: i64) -> AppResult<Option<String>> {
+    Ok(conn.query_row("SELECT body_text FROM articles WHERE id = ?1", [id], |r| r.get(0))?)
 }

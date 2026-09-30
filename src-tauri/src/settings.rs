@@ -75,6 +75,39 @@ impl Default for WidgetSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
+pub struct AiSettings {
+    /// Catalog id of the chat model; `None` = the catalog default.
+    pub active_model: Option<String>,
+    /// Unload the model after this many idle minutes (2–60).
+    pub idle_timeout_min: u32,
+    /// 4096 or 8192.
+    pub context_size: u32,
+    /// 1 = very easy, 2 = B1, 3 = natural.
+    pub english_level: u8,
+    /// AI-written "why" for the daily pick, only when the model is already loaded.
+    pub llm_why: bool,
+    /// Override for the llama-server binary.
+    pub llama_server_path: Option<String>,
+    /// A GGUF file outside the catalog (development).
+    pub custom_model_path: Option<String>,
+}
+
+impl Default for AiSettings {
+    fn default() -> Self {
+        Self {
+            active_model: None,
+            idle_timeout_min: 10,
+            context_size: 8192,
+            english_level: 2,
+            llm_why: true,
+            llama_server_path: None,
+            custom_model_path: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub onboarding_done: bool,
     pub pick_time: String,
@@ -92,6 +125,9 @@ pub struct Settings {
     pub quiet_hours: Option<(String, String)>,
     pub widget: WidgetSettings,
     pub show_dock_icon: bool,
+    pub ai: AiSettings,
+    /// Reader: the AI panel on the right is open.
+    pub reader_ai_panel_open: bool,
 }
 
 impl Default for Settings {
@@ -112,6 +148,8 @@ impl Default for Settings {
             quiet_hours: Some(("22:00".into(), "08:00".into())),
             widget: WidgetSettings::default(),
             show_dock_icon: false,
+            ai: AiSettings::default(),
+            reader_ai_panel_open: true,
         }
     }
 }
@@ -150,6 +188,15 @@ impl Settings {
         }
         if self.notify_threshold > 100 {
             return bad("Notification threshold must be 0–100");
+        }
+        if !(2..=60).contains(&self.ai.idle_timeout_min) {
+            return bad("AI idle timeout must be 2–60 minutes");
+        }
+        if ![4096, 8192].contains(&self.ai.context_size) {
+            return bad("AI context size must be 4096 or 8192");
+        }
+        if !(1..=3).contains(&self.ai.english_level) {
+            return bad("English level must be 1, 2 or 3");
         }
         if self.notify_max_per_day > 5 {
             return bad("At most 5 high-interest notifications per day");

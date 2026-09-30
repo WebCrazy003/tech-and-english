@@ -18,6 +18,8 @@ pub struct Scheduler {
     pub news: Arc<NewsService>,
     pub pick: Arc<PickService>,
     pub notify: Arc<NotifyService>,
+    /// P2: AI "why" text for the pick, only while the model is already loaded.
+    pub ai: Option<Arc<crate::ai::service::AiService>>,
 }
 
 impl Scheduler {
@@ -30,6 +32,11 @@ impl Scheduler {
         }
         if let Err(e) = self.notify.maybe_high_interest().await {
             tracing::warn!(error = %e, "high-interest check failed");
+        }
+        if let Some(ai) = &self.ai
+            && let Err(e) = ai.background_why(self.clock.today_local().to_string()).await
+        {
+            tracing::debug!(error = %e, "AI why skipped");
         }
         if let Err(e) = self.daily_jobs().await {
             tracing::warn!(error = %e, "daily jobs failed");

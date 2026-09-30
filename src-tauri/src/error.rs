@@ -16,6 +16,9 @@ pub enum AppError {
     Db(#[from] rusqlite::Error),
     #[error("internal: {0}")]
     Internal(String),
+    /// AI problems the UI handles specially: no_model, no_engine, low_memory, start_failed, ai_error.
+    #[error("{message}")]
+    Ai { code: &'static str, message: String },
 }
 
 impl AppError {
@@ -27,6 +30,7 @@ impl AppError {
             AppError::Network(_) => "network",
             AppError::Db(_) => "db",
             AppError::Internal(_) => "internal",
+            AppError::Ai { code, .. } => code,
         }
     }
 }
@@ -37,6 +41,15 @@ impl Serialize for AppError {
         s.serialize_field("code", self.code())?;
         s.serialize_field("message", &self.to_string())?;
         s.end()
+    }
+}
+
+impl AppError {
+    pub fn ai(code: &'static str, message: impl Into<String>) -> Self {
+        AppError::Ai {
+            code,
+            message: message.into(),
+        }
     }
 }
 

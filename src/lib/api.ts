@@ -1,8 +1,9 @@
 // The ONLY file that calls invoke() or listen(). Types mirror the Rust serde DTOs (camelCase).
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 export type Mode = "standard" | "hibernate";
 export type Priority = 1 | 2 | 3;
@@ -39,6 +40,63 @@ export interface Settings {
   quietHours: [string, string] | null;
   widget: WidgetSettings;
   showDockIcon: boolean;
+  ai: AiSettings;
+  readerAiPanelOpen: boolean;
+}
+
+export interface AiSettings {
+  activeModel: string | null;
+  idleTimeoutMin: number;
+  contextSize: number;
+  englishLevel: 1 | 2 | 3;
+  llmWhy: boolean;
+  llamaServerPath: string | null;
+  customModelPath: string | null;
+}
+
+export interface AiStatus {
+  state: "unloaded" | "loading" | "ready" | "busy" | "error";
+  modelId: string | null;
+  message: string | null;
+}
+
+export interface ModelInfo {
+  id: string;
+  role: string;
+  displayName: string;
+  file: string;
+  sizeBytes: number;
+  license: string;
+  licenseUrl: string;
+  recommendedRamGb: number;
+  default: boolean;
+  downloaded: boolean;
+  active: boolean;
+  partialBytes: number;
+  downloading: boolean;
+}
+
+export interface AiOverview {
+  status: AiStatus;
+  enginePath: string | null;
+  models: ModelInfo[];
+  availableMemoryGb: number;
+}
+
+export type StreamEvent =
+  | { kind: "loading" }
+  | { kind: "delta"; text: string }
+  | { kind: "done"; cached: boolean; modelId: string }
+  | { kind: "error"; code: string; message: string };
+
+export type DerivKind = "summary_b1" | "easy_english";
+export type QuickAction = "summarize" | "key_words" | "explain_simply";
+
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> | T[K] : T[K] };
@@ -103,6 +161,31 @@ export interface ArticleListItem {
   readStatus: "unread" | "opened" | "read";
   saved: boolean;
   hidden: boolean;
+  bodyStatus: BodyStatus;
+  difficulty: "easy" | "medium" | "hard" | null;
+  readingMinutes: number | null;
+}
+
+export type BodyStatus = "none" | "ok" | "failed" | "paywalled";
+
+export interface ReaderArticle extends ArticleListItem {
+  bodyHtml: string | null;
+}
+
+export interface FetchedHtml {
+  html: string;
+  finalUrl: string;
+  canonicalUrl: string | null;
+  paywallHint: boolean;
+}
+
+export interface SaveBody {
+  articleId: number;
+  text?: string | null;
+  html?: string | null;
+  canonicalUrl?: string | null;
+  paywallHint?: boolean;
+  failed?: boolean;
 }
 
 export interface DailyPick {
@@ -217,6 +300,54 @@ export const api = {
   getPickPreview: () => call<ArticleListItem | null>("get_pick_preview"),
   newsStatus: () => call<NewsStatus>("news_status"),
 
+  getReaderArticle: (id: number) => call<ReaderArticle>("get_reader_article", { id }),
+  fetchArticleHtml: (articleId: number) => call<FetchedHtml>("fetch_article_html", { articleId }),
+  saveArticleBody: (input: SaveBody) => call<ArticleListItem>("save_article_body", { input }),
+  openExternal: (url: string) => openUrl(url),
+
+  aiOverview: () => call<AiOverview>("ai_overview"),
+  downloadModel: (modelId: string) => call<void>("download_model", { modelId }),
+  cancelDownload: (modelId: string) => call<void>("cancel_download", { modelId }),
+  deleteModel: (modelId: string) => call<void>("delete_model", { modelId }),
+  setActiveModel: (modelId: string) => call<void>("set_active_model", { modelId }),
+  startAi: (force: boolean) => call<AiStatus>("start_ai", { force }),
+  unloadAi: () => call<void>("unload_ai"),
+  getDerivative: (
+    articleId: number,
+    kind: DerivKind,
+    onEvent: (e: StreamEvent) => void,
+    opts: { regenerate?: boolean; force?: boolean } = {},
+  ) => {
+    const channel = new Channel<StreamEvent>();
+    channel.onmessage = onEvent;
+    return call<{ jobId: number }>("get_derivative", {
+      articleId,
+      kind,
+      regenerate: opts.regenerate ?? false,
+      force: opts.force ?? false,
+      channel,
+    });
+  },
+  listArticleChat: (articleId: number) => call<ChatMessage[]>("list_article_chat", { articleId }),
+  sendArticleChat: (
+    articleId: number,
+    msg: { text?: string; action?: QuickAction; retry?: boolean; force?: boolean },
+    onEvent: (e: StreamEvent) => void,
+  ) => {
+    const channel = new Channel<StreamEvent>();
+    channel.onmessage = onEvent;
+    return call<{ jobId: number; userMessage: ChatMessage | null }>("send_article_chat", {
+      articleId,
+      text: msg.text ?? null,
+      action: msg.action ?? null,
+      retry: msg.retry ?? false,
+      force: msg.force ?? false,
+      channel,
+    });
+  },
+  clearArticleChat: (articleId: number) => call<void>("clear_article_chat", { articleId }),
+  cancelJob: (jobId: number) => call<void>("cancel_job", { jobId }),
+
   setWidgetStyle: (args: { style?: WidgetStyle; alwaysOnTop?: boolean }) =>
     call<WidgetSettings>("set_widget_style", { args }),
   showMain: (route?: string) => call<void>("show_main", { route: route ?? null }),
@@ -243,6 +374,10 @@ export const EVENTS = {
   modeChanged: "mode://changed",
   settingsChanged: "settings://changed",
   navigate: "navigate",
+  articleBody: "article://body",
+  needsBody: "article://needs-body",
+  aiStatus: "ai://status",
+  aiDownload: "ai://download",
 } as const;
 
 export function onEvent<T>(name: string, handler: (payload: T) => void): Promise<UnlistenFn> {

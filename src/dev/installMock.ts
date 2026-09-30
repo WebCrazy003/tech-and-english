@@ -5,7 +5,8 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import defaultTopics from "../../src-tauri/resources/default_topics.json";
 import defaultFeeds from "../../src-tauri/resources/default_feeds.json";
-import type { ArticleListItem, DailyPick, Feed, Settings, Topic } from "../lib/api";
+import type { Channel } from "@tauri-apps/api/core";
+import type { ArticleListItem, ChatMessage, DailyPick, Feed, ModelInfo, Settings, StreamEvent, Topic } from "../lib/api";
 
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -46,6 +47,16 @@ function install() {
     quietHours: ["22:00", "08:00"],
     widget: { style: "card", alwaysOnTop: true, position: null },
     showDockIcon: false,
+    ai: {
+      activeModel: null,
+      idleTimeoutMin: 10,
+      contextSize: 8192,
+      englishLevel: 2,
+      llmWhy: true,
+      llamaServerPath: null,
+      customModelPath: null,
+    },
+    readerAiPanelOpen: true,
   };
   let mode: "standard" | "hibernate" = "standard";
   let nextId = 100;
@@ -102,12 +113,61 @@ function install() {
         readStatus: i === 3 ? "read" : "unread",
         saved: i === 2,
         hidden: false,
+        bodyStatus: i === 5 ? "paywalled" : "none",
+        difficulty: null,
+        readingMinutes: null,
       }));
   const pick: DailyPick | null = fresh
     ? null
     : { date: new Date().toISOString().slice(0, 10), article: articles[0], why: "Matches your topics: LLMs, AI · 412 points on Hacker News" };
 
   const find = (id: number) => articles.find((a) => a.id === id)!;
+  const bodyHtml =
+    "<p>DuckDB is an in-process analytical database. It runs inside your application, so there is no server to manage.</p>" +
+    "<p>Many data engineers use it to explore Parquet files on a laptop. They write normal SQL, and DuckDB reads the files directly.</p>" +
+    "<h2>Why it matters</h2><p>The new storage format makes files about 30 percent smaller, and many queries run twice as fast. " +
+    'Read the <a href="https://duckdb.org/docs">documentation</a> for details.</p>';
+  const chats: Record<number, ChatMessage[]> = {};
+  let chatId = 1;
+  const models: ModelInfo[] = [
+    {
+      id: "qwen3.5-4b", role: "chat", displayName: "Qwen3.5 4B (Q4_K_M)", file: "q.gguf", sizeBytes: 2740937888,
+      license: "Apache-2.0", licenseUrl: "https://huggingface.co/Qwen", recommendedRamGb: 8, default: true,
+      downloaded: !new URLSearchParams(location.search).has("nomodel"), active: true, partialBytes: 0, downloading: false,
+    },
+    {
+      id: "gemma-4-e4b", role: "chat", displayName: "Gemma 4 E4B (Q4_K_M)", file: "g.gguf", sizeBytes: 4977171584,
+      license: "Apache-2.0", licenseUrl: "https://huggingface.co/google", recommendedRamGb: 12, default: false,
+      downloaded: false, active: false, partialBytes: 0, downloading: false,
+    },
+  ];
+  let aiState: "unloaded" | "loading" | "ready" = "unloaded";
+  /** Fake streaming: sends `text` word by word to the channel. */
+  const streamTo = (ch: Channel<StreamEvent>, text: string, after?: () => void) => {
+    const send = (e: StreamEvent) => ch.onmessage(e);
+    if (!models[0].downloaded) {
+      send({ kind: "error", code: "no_model", message: "No AI model is downloaded yet." });
+      return;
+    }
+    if (aiState === "unloaded") send({ kind: "loading" });
+    const words = text.split(/(?<= )/);
+    let i = 0;
+    const tick = () => {
+      aiState = "ready";
+      if (i < words.length) {
+        send({ kind: "delta", text: words[i++] });
+        setTimeout(tick, 30);
+      } else {
+        after?.();
+        send({ kind: "done", cached: false, modelId: "qwen3.5-4b" });
+      }
+    };
+    setTimeout(tick, aiState === "unloaded" ? 1200 : 300);
+  };
+  const SUMMARY =
+    "This article is about DuckDB, a small database that runs **inside your program**.\n\n" +
+    "The new version makes files about 30 percent smaller. Many queries now run twice as fast.\n\n" +
+    "**Key words**\nin-process — running inside your program\nParquet — a file format for tables";
   const changed = () => void emit("news://updated", { newCount: 0 });
 
   mockIPC(
@@ -198,6 +258,72 @@ function install() {
         case "take_pending_route":
           return null;
         case "quit_app":
+          return null;
+        case "get_reader_article": {
+          const a = find(p.id);
+          return { ...a, bodyHtml: a.bodyStatus === "ok" ? bodyHtml : null };
+        }
+        case "fetch_article_html":
+          return {
+            html: `<html><body><article><h1>x</h1>${bodyHtml.repeat(8)}</article></body></html>`,
+            finalUrl: find(p.articleId).url,
+            canonicalUrl: null,
+            paywallHint: false,
+          };
+        case "save_article_body": {
+          const a = find((p.input as { articleId: number }).articleId);
+          if (a.bodyStatus === "none") Object.assign(a, { bodyStatus: "ok", difficulty: "medium", readingMinutes: 4 });
+          return a;
+        }
+        case "ai_overview":
+          return {
+            status: { state: aiState, modelId: aiState === "unloaded" ? null : "qwen3.5-4b", message: null },
+            enginePath: "/Users/me/llama-server",
+            models,
+            availableMemoryGb: 7.8,
+          };
+        case "get_derivative":
+          streamTo(
+            p.channel as Channel<StreamEvent>,
+            p.kind === "summary_b1"
+              ? SUMMARY
+              : "DuckDB is a database. It runs inside your app (in-process means inside your program). Files are smaller now. Queries are faster.",
+          );
+          return { jobId: 1 };
+        case "list_article_chat":
+          return chats[p.articleId] ?? [];
+        case "send_article_chat": {
+          const list = (chats[p.articleId] ??= []);
+          const actionText: Record<string, string> = {
+            summarize: "Summarize this article.",
+            key_words: "List 5 important technical words from this article.",
+            explain_simply: "Explain the main idea of this article in very simple English.",
+          };
+          const text = (p.action ? actionText[p.action as string] : p.text) as string | null;
+          const um = p.retry ? null : { id: chatId++, role: "user" as const, content: text ?? "", createdAt: new Date().toISOString() };
+          if (um) list.push(um);
+          const answer =
+            p.action === "summarize"
+              ? SUMMARY
+              : "The files are smaller because the **new storage format** compresses columns better. Less data is read from disk, so queries are faster.";
+          streamTo(p.channel as Channel<StreamEvent>, answer, () =>
+            list.push({ id: chatId++, role: "assistant", content: answer, createdAt: new Date().toISOString() }),
+          );
+          return { jobId: 2, userMessage: um };
+        }
+        case "clear_article_chat":
+          chats[p.articleId] = [];
+          return null;
+        case "cancel_job":
+        case "start_ai":
+        case "unload_ai":
+        case "set_active_model":
+        case "delete_model":
+        case "cancel_download":
+          return null;
+        case "download_model":
+          models[0].downloaded = true;
+          setTimeout(() => void emit("ai://download", { modelId: p.modelId, done: true }), 800);
           return null;
         case "get_onboarding_defaults":
           return { topics: defaultTopics, feeds: defaultFeeds };

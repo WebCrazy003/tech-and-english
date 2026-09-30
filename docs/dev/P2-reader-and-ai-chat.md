@@ -1,5 +1,7 @@
 # P2 — Reader & AI chat (dev spec)
 
+> **Status (2026-09-29):** built. See `docs/qa/P2.md` for verification, deviations, and remaining manual checks.
+
 - **Goal:** read stories inside the app, with a local AI chat panel on the right. The panel can summarize the story, list its key words, explain it simply, and answer questions about it. The model loads only when it is used, unloads when idle, and never runs in Hibernate.
 - **SPEC sections:** §8.1–8.4, §11, §6 (LLM rows), §13 (P2), §14 (P2), §16, §18 P2.
 - **Branch:** `p2/reader-ai-chat` → tag `v0.2.0`
@@ -105,7 +107,7 @@ Frontend (lib/extract.ts) ensureBody(articleId)
   - `failed` if the frontend says so, or if `word_count < 80`.
   - Otherwise `paywalled` if `paywallHint && word_count < 400`, or if `word_count < 150 && description.len() > 200`.
   - Otherwise `ok`.
-- If `ok`: compute difficulty (§4) and store `canonical_url`. If another article already has the same **canonical** URL, merge this one into it (the P1 dedupe merge path) and return the surviving id.
+- If `ok`: compute difficulty (§4) and store `canonical_url`. *(Deferred: merging with another article that has the same canonical URL, because picks, chats and interactions would have to move. See `docs/qa/P2.md`.)*
 - Wake the pick waiters (§5).
 - Emit `article://body {articleId, status}`.
 
@@ -272,8 +274,9 @@ The first match wins:
 
 1. `settings.ai.llamaServerPath` (Settings › AI › Advanced)
 2. `<current_exe dir>/llama-server` (the bundled sidecar in P6)
-3. `which llama-server` (PATH)
-4. `/opt/homebrew/bin/llama-server`
+3. `<app data>/bin/*/llama-server` (the official nightly build unpacked there; newest folder first; added after the spike, because Homebrew has no bottle here)
+4. `which llama-server` (PATH)
+5. `/opt/homebrew/bin/llama-server`
 
 If nothing is found, the status is `error: "llama-server not found"`, and Settings › AI shows how to fix it (`brew install llama.cpp`).
 

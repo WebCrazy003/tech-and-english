@@ -107,3 +107,21 @@
   overflow-y: auto;
   padding: 28px 36px 60px;
 }
+
+/* Reader: icon rail + full-bleed content */
+.rail {
+  width: 56px;
+  padding: 18px 8px 14px;
+  align-items: center;
+}
+.rail .brand {
+  padding: 0 0 14px;
+}
+.rail .nav {
+  justify-content: center;
+  padding: 8px;
+}
+.contentFlush {
+  padding: 0;
+  overflow: hidden;
+}
