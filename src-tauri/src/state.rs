@@ -13,6 +13,7 @@ use crate::news::NewsService;
 use crate::news::pick::PickService;
 use crate::notify::NotifyService;
 use crate::settings::SettingsStore;
+use crate::voice::session::VoiceEngine;
 
 pub struct AppState {
     pub db: Db,
@@ -28,6 +29,8 @@ pub struct AppState {
     pub stt_manager: Arc<AiManager>,
     pub ai_service: Arc<AiService>,
     pub vocab: Arc<VocabService>,
+    /// Voice tutor (P5).
+    pub voice: Arc<VoiceEngine>,
     pub downloader: Arc<Downloader>,
     /// Set by the tray Quit item; any other exit request is prevented.
     pub quitting: AtomicBool,

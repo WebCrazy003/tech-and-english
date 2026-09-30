@@ -128,6 +128,23 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         mode.clone(),
     );
 
+    // P5: the voice tutor.
+    tauri::async_runtime::block_on(db.call(|c| db::repo::voice::close_dangling(c)))?;
+    let voice = voice::session::VoiceEngine::new(voice::session::VoiceDeps {
+        db: db.clone(),
+        clock: clock.clone(),
+        settings: settings.clone(),
+        events: events.clone(),
+        mode: mode.clone(),
+        ai: ai_service.clone(),
+        stt: Arc::new(voice::stt::WhisperServerProvider::new(stt_manager.clone())),
+        vocab: vocab.clone(),
+        llm_manager: Some(ai_manager.clone()),
+        stt_manager: Some(stt_manager.clone()),
+        data_dir: data_dir.clone(),
+        dictionary: Arc::new(learning::dictionary::lookup),
+    });
+
     #[cfg(target_os = "macos")]
     if !current.show_dock_icon {
         app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -146,6 +163,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         stt_manager: stt_manager.clone(),
         ai_service: ai_service.clone(),
         vocab: vocab.clone(),
+        voice: voice.clone(),
         downloader: Arc::new(ai::models::Downloader::default()),
         quitting: AtomicBool::new(false),
         pending_route: Mutex::new(None),
@@ -281,6 +299,22 @@ pub fn run() {
             commands::words::grade_quiz_item,
             commands::words::finish_quiz,
             commands::words::list_quiz_history,
+            commands::voice::voice_setup,
+            commands::voice::start_voice_session,
+            commands::voice::start_recording,
+            commands::voice::stop_recording,
+            commands::voice::send_text_turn,
+            commands::voice::start_drill,
+            commands::voice::update_session_settings,
+            commands::voice::get_active_session,
+            commands::voice::end_voice_session,
+            commands::voice::get_session_review,
+            commands::voice::apply_session_review,
+            commands::voice::list_conversations,
+            commands::voice::get_conversation,
+            commands::voice::delete_conversations,
+            commands::voice::report_latency,
+            commands::voice::voice_latency,
             commands::shell::set_widget_style,
             commands::shell::show_main,
             commands::shell::take_pending_route,
@@ -303,8 +337,14 @@ pub fn run() {
         // Never leave the AI or speech engine running after Quit.
         RunEvent::Exit => {
             if let Some(state) = app.try_state::<AppState>() {
-                let (llm, stt) = (state.ai_manager.clone(), state.stt_manager.clone());
+                let (llm, stt, voice) = (state.ai_manager.clone(), state.stt_manager.clone(), state.voice.clone());
                 tauri::async_runtime::block_on(async move {
+                    // A running conversation keeps its review for later (History).
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(1),
+                        voice.end(voice::session::EndReason::Quit, false),
+                    )
+                    .await;
                     let both = async { tokio::join!(llm.shutdown(), stt.shutdown()) };
                     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), both).await;
                 });

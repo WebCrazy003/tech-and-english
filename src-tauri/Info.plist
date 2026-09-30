@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- P5: shown by macOS the first time the voice tutor opens the microphone. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Tech English uses the microphone only while you hold the talk button, to practise speaking English. Audio is processed on this Mac and not saved.</string>
+</dict>
+</plist>

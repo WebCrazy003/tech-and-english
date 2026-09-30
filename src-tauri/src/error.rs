@@ -10,6 +10,9 @@ pub enum AppError {
     Invalid(String),
     #[error("unavailable in hibernate mode")]
     Hibernating,
+    /// A voice session is running (P5): Hibernate needs confirmation first.
+    #[error("A conversation is running. End it first.")]
+    SessionActive,
     #[error("{0}")]
     Network(String),
     #[error("database: {0}")]
@@ -27,6 +30,7 @@ impl AppError {
             AppError::NotFound(_) => "not_found",
             AppError::Invalid(_) => "invalid",
             AppError::Hibernating => "hibernating",
+            AppError::SessionActive => "session_active",
             AppError::Network(_) => "network",
             AppError::Db(_) => "db",
             AppError::Internal(_) => "internal",

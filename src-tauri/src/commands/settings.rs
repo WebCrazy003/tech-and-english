@@ -9,6 +9,7 @@ use crate::mode::Mode;
 use crate::settings::Settings;
 use crate::shell;
 use crate::state::AppState;
+use crate::voice::session::EndReason;
 
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> CmdResult<Settings> {
@@ -38,8 +39,16 @@ pub async fn get_mode(state: State<'_, AppState>) -> CmdResult<Mode> {
     Ok(state.mode.get())
 }
 
+/// Hibernate during a voice session needs `force` (the UI asked first); the session then ends
+/// and its review stays pending.
 #[tauri::command]
-pub async fn set_mode(state: State<'_, AppState>, mode: Mode) -> CmdResult<Mode> {
+pub async fn set_mode(state: State<'_, AppState>, mode: Mode, force: Option<bool>) -> CmdResult<Mode> {
+    if mode == Mode::Hibernate && state.voice.is_active() {
+        if !force.unwrap_or(false) {
+            return Err(AppError::SessionActive);
+        }
+        state.voice.end(EndReason::Hibernate, false).await?;
+    }
     state.mode.set(mode).await
 }
 

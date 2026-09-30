@@ -14,6 +14,9 @@ pub const NEEDS_BODY: &str = "article://needs-body";
 pub const AI_STATUS: &str = "ai://status";
 pub const AI_DOWNLOAD: &str = "ai://download";
 pub const VOCAB_CHANGED: &str = "vocab://changed";
+pub const VOICE_ACTIVE: &str = "voice://active";
+pub const VOICE_LEVEL: &str = "voice://level";
+pub const VOICE_AUTOSTOP: &str = "voice://autostop";
 
 pub trait EventSink: Send + Sync {
     fn emit_value(&self, event: &str, payload: Value);

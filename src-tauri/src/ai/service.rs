@@ -2,7 +2,7 @@
 //! (P2 dev spec §10–§14). One request runs at a time; interactive requests go first.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -12,7 +12,7 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use super::prompts::{self, ArticleText, QuickAction};
-use super::provider::{ChatMsg, LlmProvider, LlmRequest};
+use super::provider::{ChatMsg, ChunkStream, LlmProvider, LlmRequest};
 use crate::clock::{Clock, fmt_ts};
 use crate::db::Db;
 use crate::db::repo::ai::{self as ai_repo, ChatMessage, Derivative};
@@ -152,8 +152,10 @@ pub struct AiService {
     settings: Arc<SettingsStore>,
     events: Arc<dyn EventSink>,
     provider: Arc<dyn LlmProvider>,
-    llm: Semaphore,
+    llm: Arc<Semaphore>,
     interactive_waiting: AtomicUsize,
+    /// A voice session is running: background jobs must not evict the tutor's cached prompt.
+    quiet: AtomicBool,
     jobs: Mutex<HashMap<u64, CancellationToken>>,
     next_job: AtomicU64,
     /// "Explain simply" answers for this session, keyed by (term key, sentence).
@@ -174,12 +176,58 @@ impl AiService {
             settings,
             events,
             provider,
-            llm: Semaphore::new(1),
+            llm: Arc::new(Semaphore::new(1)),
             interactive_waiting: AtomicUsize::new(0),
+            quiet: AtomicBool::new(false),
             jobs: Mutex::new(HashMap::new()),
             next_job: AtomicU64::new(1),
             term_cache: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Pause (or resume) the background jobs ("why", meaning auto-fill) during a voice session.
+    pub fn set_quiet(&self, quiet: bool) {
+        self.quiet.store(quiet, Ordering::SeqCst);
+    }
+
+    fn background_allowed(&self) -> bool {
+        self.provider.is_ready()
+            && !self.quiet.load(Ordering::SeqCst)
+            && self.interactive_waiting.load(Ordering::SeqCst) == 0
+    }
+
+    /// A streamed request with interactive priority (voice tutor). The queue slot is held
+    /// until the stream is dropped.
+    pub async fn interactive_stream(&self, req: LlmRequest, force: bool) -> AppResult<ChunkStream> {
+        self.interactive_waiting.fetch_add(1, Ordering::SeqCst);
+        let permit = self.llm.clone().acquire_owned().await;
+        self.interactive_waiting.fetch_sub(1, Ordering::SeqCst);
+        let permit = permit.map_err(|_| AppError::Internal("AI queue closed".into()))?;
+        let stream = self.provider.stream(req, force).await?;
+        Ok(Box::pin(stream.map(move |chunk| {
+            let _slot = &permit;
+            chunk
+        })))
+    }
+
+    /// One full answer with interactive priority (session review). May start the model.
+    pub async fn complete(&self, req: LlmRequest, force: bool) -> AppResult<String> {
+        self.complete_interactive(req, force).await
+    }
+
+    /// An "Explain simply" answer already in the session cache, for any sentence.
+    pub fn cached_term(&self, term: &str) -> Option<DefineTermOut> {
+        let key = crate::learning::vocab::text_key(term);
+        self.term_cache
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|((k, _), _)| *k == key)
+            .map(|(_, v)| v.clone())
+    }
+
+    pub fn model_id(&self) -> String {
+        self.provider.model_id()
     }
 
     /// Register a cancellable job; returns (id, token).
@@ -292,7 +340,7 @@ impl AiService {
         sentence: &str,
         title: &str,
     ) -> AppResult<Option<DefineTermOut>> {
-        if !self.provider.is_ready() || self.interactive_waiting.load(Ordering::SeqCst) > 0 {
+        if !self.background_allowed() {
             return Ok(None);
         }
         let Ok(_permit) = self.llm.try_acquire() else {
@@ -466,10 +514,7 @@ impl AiService {
     /// AI-written "why" for today's story (the lesson keeps its template). Only when the model is already loaded and idle;
     /// never starts the model (P2 dev spec §14.2).
     pub async fn background_why(&self, date: String) -> AppResult<bool> {
-        if !self.settings.get().ai.llm_why || !self.provider.is_ready() {
-            return Ok(false);
-        }
-        if self.interactive_waiting.load(Ordering::SeqCst) > 0 {
+        if !self.settings.get().ai.llm_why || !self.background_allowed() {
             return Ok(false);
         }
         let Ok(_permit) = self.llm.try_acquire() else {
@@ -753,6 +798,16 @@ mod tests {
         );
         assert_eq!(t.mock.calls(), 0);
         t.mock.ready.store(true, Ordering::SeqCst);
+        t.svc.set_quiet(true);
+        assert!(
+            t.svc
+                .define_term_background("inference", "", "")
+                .await
+                .unwrap()
+                .is_none(),
+            "paused during a voice session"
+        );
+        t.svc.set_quiet(false);
         assert!(
             t.svc
                 .define_term_background("inference", "", "")
@@ -760,6 +815,25 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+        assert!(
+            t.svc.cached_term("Inference").is_none(),
+            "background answers are not cached"
+        );
+    }
+
+    #[tokio::test]
+    async fn interactive_stream_holds_the_queue_until_dropped() {
+        let t = setup(&[&["a", "b"], &["c"]]).await;
+        let mut s = t
+            .svc
+            .interactive_stream(LlmRequest::new(vec![], 5), false)
+            .await
+            .unwrap();
+        assert!(t.svc.llm.try_acquire().is_err(), "slot taken while streaming");
+        assert_eq!(s.next().await.unwrap().unwrap(), "a");
+        drop(s);
+        assert!(t.svc.llm.try_acquire().is_ok(), "slot freed");
+        assert_eq!(t.svc.complete(LlmRequest::new(vec![], 5), false).await.unwrap(), "c");
     }
 
     #[tokio::test]

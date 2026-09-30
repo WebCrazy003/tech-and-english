@@ -101,6 +101,12 @@ fn on_menu_event(app: &AppHandle, ev: MenuEvent) {
             } else {
                 Mode::Hibernate
             };
+            // A running conversation: ask in the main window first (P5 §13).
+            if mode == Mode::Hibernate && state.voice.is_active() {
+                sync_mode_items(app, state.mode.get());
+                show_main(app, "/talk/session?confirm=hibernate");
+                return;
+            }
             let m = state.mode.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = m.set(mode).await {
@@ -129,6 +135,10 @@ fn on_menu_event(app: &AppHandle, ev: MenuEvent) {
             }
         }
         "quit" => {
+            if state.voice.is_active() {
+                show_main(app, "/talk/session?confirm=quit");
+                return;
+            }
             state.quitting.store(true, Ordering::SeqCst);
             app.exit(0);
         }
