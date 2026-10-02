@@ -551,6 +551,18 @@ pub fn set_saved(conn: &Connection, id: i64, saved: bool) -> AppResult<()> {
     Ok(())
 }
 
+/// Recent visible articles whose body was never fetched, best first (the background body check).
+pub fn unchecked_bodies(conn: &Connection, since: &str, limit: u32) -> AppResult<Vec<i64>> {
+    let mut st = conn.prepare(
+        "SELECT id FROM articles WHERE hidden = 0 AND body_status = 'none' AND discovered_at >= ?1
+         ORDER BY score DESC LIMIT ?2",
+    )?;
+    let ids = st
+        .query_map(params![since, limit], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
 pub fn set_hidden(conn: &Connection, id: i64) -> AppResult<()> {
     conn.execute("UPDATE articles SET hidden = 1 WHERE id = ?1", [id])?;
     Ok(())

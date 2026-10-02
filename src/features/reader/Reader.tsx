@@ -88,13 +88,21 @@ export default function Reader() {
     scrollRef.current?.scrollTo({ top: 0 });
     void api.recordInteraction(articleId, "opened").catch(() => {});
     ensureBody(articleId)
-      .then(setArticle)
+      .then((a) => {
+        if (a.bodyStatus === "failed" || a.bodyStatus === "paywalled") {
+          // The backend hid it: stories without full text are not shown anywhere.
+          toast("We couldn't load this article, so we removed it.");
+          navigate(-1);
+          return;
+        }
+        setArticle(a);
+      })
       .catch((e) => {
         toastError(e);
         void api.getReaderArticle(articleId).then(setArticle).catch(() => {});
       })
       .finally(() => setLoading(false));
-  }, [articleId]);
+  }, [articleId, navigate]);
 
   useReadTracking(article, scrollRef);
   // Words already in the Word Book are underlined lightly (the Original tab).

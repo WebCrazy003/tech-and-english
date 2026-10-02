@@ -293,6 +293,7 @@ pub fn run() {
             commands::news::open_article,
             commands::news::get_today_pick,
             commands::news::get_pick_preview,
+            commands::news::next_pick,
             commands::news::get_today_lesson,
             commands::news::discover_feeds,
             commands::news::add_feed_from_example,

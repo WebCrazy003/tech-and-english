@@ -410,6 +410,12 @@ function install() {
         }
         case "get_pick_preview":
           return articles.find((a) => !a.hidden) ?? null;
+        case "next_pick": {
+          const cur = articles.find((a) => !a.hidden);
+          if (cur) cur.hidden = true;
+          changed();
+          return null;
+        }
         case "news_status":
           return { articleCount: articles.length, feedCount: feeds.length, feedsWithErrors: feeds.filter((f) => f.lastError).length, lastFetchedAt: hoursAgo(0.2) };
         case "set_widget_style":

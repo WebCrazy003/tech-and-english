@@ -661,6 +661,8 @@ export const api = {
   getTodayPick: () => call<DailyPick | null>("get_today_pick"),
   getTodayLesson: () => call<DailyPick | null>("get_today_lesson"),
   getPickPreview: () => call<ArticleListItem | null>("get_pick_preview"),
+  /** "Show another": pass over today's story/lesson and suggest the next one. */
+  nextPick: (kind: "story" | "lesson") => call<void>("next_pick", { kind }),
   newsStatus: () => call<NewsStatus>("news_status"),
 
   getReaderArticle: (id: number) => call<ReaderArticle>("get_reader_article", { id }),
@@ -813,6 +815,7 @@ export const EVENTS = {
   navigate: "navigate",
   articleBody: "article://body",
   needsBody: "article://needs-body",
+  checkBodies: "article://check-bodies",
   aiStatus: "ai://status",
   aiDownload: "ai://download",
   vocabChanged: "vocab://changed",

@@ -47,6 +47,9 @@ pub const LESSON_WINDOW_DAYS: i64 = retention::DELETE_AFTER_DAYS;
 pub const EXAMPLE_SOURCE_WEIGHT: f64 = 0.6;
 const MAX_BACKOFF: Duration = Duration::hours(6);
 const OFFLINE_RETRY_SECS: [i64; 3] = [30, 60, 120];
+/// Background body check after a fetch: new articles from the last day, best first.
+const CHECK_BODIES_DAYS: i64 = 1;
+const CHECK_BODIES_MAX: u32 = 40;
 
 #[derive(Default)]
 struct OfflineState {
@@ -239,6 +242,20 @@ impl NewsService {
             events::NEWS_UPDATED,
             &json!({ "newCount": new_count }),
         );
+        if new_count > 0 {
+            let since = fmt_ts(now - Duration::days(CHECK_BODIES_DAYS));
+            let ids = self
+                .db
+                .call(move |c| articles::unchecked_bodies(c, &since, CHECK_BODIES_MAX))
+                .await?;
+            if !ids.is_empty() {
+                events::emit(
+                    self.events.as_ref(),
+                    events::CHECK_BODIES,
+                    &json!({ "articleIds": ids }),
+                );
+            }
+        }
         Ok(new_count)
     }
 
@@ -521,14 +538,21 @@ impl NewsService {
                 )?;
                 if keep {
                     ingest::rematch(tx, id, &topics)?;
+                } else {
+                    articles::set_hidden(tx, id)?;
                 }
                 // The word count is known now (long bodies get a small bonus).
                 ingest::update_learning(tx, id)?;
-                articles::get_item(tx, id)
+                Ok((articles::get_item(tx, id)?, !current.hidden && !keep))
             })
             .await?;
+        let (item, newly_hidden) = item;
         tracing::debug!(article = id, status = %item.body_status, words = word_count, "body saved");
         self.body_waiters.wake(id, &item.body_status);
+        // Lists drop the story only when it was visible before (the background check saves many bodies).
+        if newly_hidden {
+            events::emit(self.events.as_ref(), events::NEWS_UPDATED, &json!({ "newCount": 0 }));
+        }
         events::emit(
             self.events.as_ref(),
             events::ARTICLE_BODY,
@@ -986,6 +1010,48 @@ mod tests {
         let only_article = h.news.add_from_example(input(None, true)).await.unwrap();
         assert_eq!(only_article.article.unwrap().id, a.id, "same article, not a copy");
         assert!(h.news.add_from_example(input(None, false)).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn unreadable_articles_are_hidden() {
+        let s = MockServer::start().await;
+        Mock::given(path("/feed"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(include_str!("../../tests/fixtures/rss2_basic.xml")),
+            )
+            .mount(&s)
+            .await;
+        let h = harness("2026-09-29T08:00:00Z").await;
+        add_topic(&h, "Data", &["Kafka", "streaming", "AI"]).await;
+        add_feed(&h, "rss", &format!("{}/feed", s.uri())).await;
+        h.news.fetch_cycle(false).await.unwrap();
+        assert!(
+            h.events.names().iter().any(|n| n == events::CHECK_BODIES),
+            "new articles get checked"
+        );
+
+        let list = || h.db.call(|c| articles::list_items(c, &Default::default(), None, 50));
+        let before = list().await.unwrap().items;
+        let id = before[0].id;
+        let saved = h
+            .news
+            .save_article_body(SaveBody {
+                article_id: id,
+                text: None,
+                html: None,
+                canonical_url: None,
+                paywall_hint: false,
+                failed: true,
+            })
+            .await
+            .unwrap();
+        assert!(saved.hidden);
+        let after = list().await.unwrap().items;
+        assert_eq!(after.len(), before.len() - 1);
+        assert!(
+            after.iter().all(|a| a.id != id),
+            "a story the app can't read is not shown"
+        );
     }
 
     #[tokio::test]

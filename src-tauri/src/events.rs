@@ -11,6 +11,8 @@ pub const SETTINGS_CHANGED: &str = "settings://changed";
 pub const NAVIGATE: &str = "navigate";
 pub const ARTICLE_BODY: &str = "article://body";
 pub const NEEDS_BODY: &str = "article://needs-body";
+/// Low-priority list of new articles to fetch; unreadable ones get hidden.
+pub const CHECK_BODIES: &str = "article://check-bodies";
 pub const AI_STATUS: &str = "ai://status";
 pub const AI_DOWNLOAD: &str = "ai://download";
 pub const VOCAB_CHANGED: &str = "vocab://changed";

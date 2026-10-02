@@ -17,7 +17,7 @@ use crate::db::Db;
 use crate::db::repo::articles::{self, ArticleListItem};
 use crate::db::repo::interactions;
 use crate::db::repo::picks::{self, LESSON, STORY};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::events::{self, EventSink};
 use crate::notify::NotifyService;
 use crate::settings::SettingsStore;
@@ -43,7 +43,7 @@ pub const PICK_ATTEMPTS: usize = 3;
 pub const BODY_WAIT: StdDuration = StdDuration::from_secs(30);
 
 /// Best eligible articles at `now`: relevance ≥ 0.3, age ≤ `max_age_hours`, not hidden,
-/// not paywalled, not picked in the last 14 days. Highest score first; ties → newest.
+/// not paywalled, not picked or passed over ("Show another") in the last 14 days. Highest score first; ties → newest.
 pub fn best_candidates(
     conn: &Connection,
     now: DateTime<Utc>,
@@ -59,6 +59,7 @@ pub fn best_candidates(
            AND COALESCE((SELECT MAX(relevance) FROM article_topics WHERE article_id = a.id), 0) >= ?1
            AND COALESCE(a.published_at, a.discovered_at) >= ?2
            AND a.id NOT IN (SELECT article_id FROM daily_picks WHERE date >= ?3)
+           AND a.id NOT IN (SELECT article_id FROM pick_skips WHERE kind = 'story' AND date >= ?3)
          ORDER BY a.score DESC, a.discovered_at DESC, a.id DESC LIMIT ?4",
     )?;
     let rows = st
@@ -114,6 +115,7 @@ pub fn lesson_candidates(
            AND COALESCE(a.published_at, a.discovered_at) >= ?3
            AND a.id IS NOT ?4
            AND a.id NOT IN (SELECT article_id FROM daily_picks WHERE date >= ?5)
+           AND a.id NOT IN (SELECT article_id FROM pick_skips WHERE kind = 'lesson' AND date >= ?5)
          ORDER BY a.lesson_score DESC, a.discovered_at DESC, a.id DESC LIMIT ?6",
     )?;
     let rows = st
@@ -263,10 +265,10 @@ impl PickService {
         Ok(BodyWaiters::wait(rx, self.body_wait).await)
     }
 
-    /// P2: make sure the body is extracted; skip paywalled candidates.
+    /// P2: make sure the body is extracted; skip candidates without full text (they get hidden).
     async fn first_readable(&self, cands: &[i64]) -> AppResult<i64> {
         for id in cands {
-            if self.ensure_body(*id).await?.as_deref() != Some("paywalled") {
+            if !matches!(self.ensure_body(*id).await?.as_deref(), Some("paywalled" | "failed")) {
                 return Ok(*id);
             }
         }
@@ -382,6 +384,76 @@ impl PickService {
         self.db
             .tx(move |tx| insert_pick(tx, &d, LESSON, id, &fmt_ts(now)))
             .await
+    }
+
+    /// "Show another": pass over the current story/lesson (today's pick, or the story preview
+    /// before pick time) and suggest the next best one. Errors when nothing else is left.
+    pub async fn next(&self, kind: &str) -> AppResult<()> {
+        let kind = match kind {
+            STORY => STORY,
+            LESSON => LESSON,
+            other => return Err(AppError::Invalid(format!("unknown pick kind: {other}"))),
+        };
+        let max_age_days = self.settings.get().lesson_max_age_days;
+        let _guard = self.pick_lock.lock().await;
+        let (now, today) = (self.clock.now(), self.clock.today_local());
+        let date = today.to_string();
+        let d = date.clone();
+        let (current, has_pick, cands) = self
+            .db
+            .call(move |c| {
+                let pick = picks::get(c, &d, kind)?.map(|p| p.article_id);
+                let current = match pick {
+                    Some(id) => Some(id),
+                    None if kind == STORY => select(c, now, today)?,
+                    None => None,
+                };
+                let Some(cur) = current else {
+                    return Ok((None, false, Vec::new()));
+                };
+                let cands = if kind == STORY {
+                    candidates(c, now, today, PICK_ATTEMPTS + 1)?
+                } else {
+                    let story = picks::get(c, &d, STORY)?.map(|p| p.article_id);
+                    lesson_candidates(c, now, today, max_age_days, story, PICK_ATTEMPTS + 1)?
+                };
+                let cands: Vec<i64> = cands.into_iter().filter(|id| *id != cur).take(PICK_ATTEMPTS).collect();
+                Ok((Some(cur), pick.is_some(), cands))
+            })
+            .await?;
+        let Some(cur) = current else {
+            return Err(AppError::NotFound("There is nothing to replace yet.".into()));
+        };
+        if cands.is_empty() {
+            return Err(AppError::Invalid(
+                "No more suggestions today. Look in Explore, or try Refresh news.".into(),
+            ));
+        }
+        let next = if has_pick {
+            Some(self.first_readable(&cands).await?)
+        } else {
+            None
+        };
+        let pick = self
+            .db
+            .tx(move |tx| {
+                picks::add_skip(tx, &date, kind, cur)?;
+                let Some(id) = next else { return Ok(None) };
+                picks::delete(tx, &date, kind)?;
+                insert_pick(tx, &date, kind, id, &fmt_ts(now))
+            })
+            .await?;
+        self.news.record_interaction(cur, InteractionKind::Skipped).await?;
+        tracing::info!(kind, skipped = cur, next = ?pick.as_ref().map(|p| p.article.id), "show another");
+        match &pick {
+            Some(p) => events::emit(self.events.as_ref(), events::PICK_CHANGED, p),
+            None => events::emit(
+                self.events.as_ref(),
+                events::NEWS_UPDATED,
+                &serde_json::json!({ "newCount": 0 }),
+            ),
+        }
+        Ok(())
     }
 
     /// Record "skipped" (once) for yesterday's story and lesson if they were never opened.
@@ -671,6 +743,54 @@ mod tests {
         assert!(sent[0].1.contains(&format!("Lesson: \"{}\"", lesson.article.title)));
         assert!(pick.ensure_today().await.unwrap().is_none());
         assert_eq!(notifier.sent.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn show_another_lesson_until_none_left() {
+        let (h, pick, notifier, _s, _) = setup_lessons(true).await;
+        pick.ensure_today().await.unwrap();
+        let mut seen = vec![pick.today_lesson().await.unwrap().expect("lesson").article.id];
+        while pick.next(LESSON).await.is_ok() {
+            let l = pick.today_lesson().await.unwrap().expect("a new lesson");
+            assert!(TUTORIALS.contains(&l.article.title.as_str()), "{}", l.article.title);
+            assert!(!seen.contains(&l.article.id), "a passed lesson comes back");
+            seen.push(l.article.id);
+        }
+        assert_eq!(seen.len(), TUTORIALS.len(), "every tutorial offered once");
+        let err = pick.next(LESSON).await.unwrap_err().to_string();
+        assert!(err.starts_with("No more suggestions today"), "{err}");
+        assert!(pick.today_lesson().await.unwrap().is_some(), "the last lesson stays");
+        assert_eq!(notifier.sent.lock().unwrap().len(), 1, "no extra notification");
+        let first = seen[0];
+        let skipped: i64 =
+            h.db.call(move |c| {
+                Ok(c.query_row(
+                    "SELECT count(*) FROM article_interactions WHERE article_id = ?1 AND kind = 'skipped'",
+                    [first],
+                    |r| r.get(0),
+                )?)
+            })
+            .await
+            .unwrap();
+        assert_eq!(skipped, 1);
+    }
+
+    #[tokio::test]
+    async fn show_another_story_before_and_after_pick_time() {
+        let (h, pick, _n, _s) = setup("2026-09-29T07:30:00Z").await;
+        add_topic(&h, "Data", &["Kafka"]).await;
+        h.news.fetch_cycle(true).await.unwrap();
+        // Before pick time: the preview moves on.
+        let first = pick.preview().await.unwrap().unwrap().id;
+        pick.next(STORY).await.unwrap();
+        let second = pick.preview().await.unwrap().expect("another story").id;
+        assert_ne!(first, second);
+        // After pick time: the passed story is never picked; today's pick can be replaced too.
+        h.clock.advance(Duration::minutes(31));
+        let p = pick.ensure_today().await.unwrap().expect("picked");
+        assert_eq!(p.article.id, second);
+        assert!(pick.next(STORY).await.is_err(), "only the passed story is left");
+        assert_eq!(pick.today().await.unwrap().unwrap().article.id, second);
     }
 
     #[tokio::test]

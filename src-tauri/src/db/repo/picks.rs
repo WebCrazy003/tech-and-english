@@ -41,6 +41,21 @@ pub fn insert(conn: &Connection, date: &str, kind: &str, article_id: i64, why: &
     Ok(())
 }
 
+/// Replace today's pick: drop the old row ("Show another").
+pub fn delete(conn: &Connection, date: &str, kind: &str) -> AppResult<()> {
+    conn.execute("DELETE FROM daily_picks WHERE date = ?1 AND kind = ?2", [date, kind])?;
+    Ok(())
+}
+
+/// Remember an article passed over with "Show another" so it isn't suggested again.
+pub fn add_skip(conn: &Connection, date: &str, kind: &str, article_id: i64) -> AppResult<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO pick_skips(date, kind, article_id) VALUES (?1,?2,?3)",
+        params![date, kind, article_id],
+    )?;
+    Ok(())
+}
+
 /// Articles picked (story or lesson) on or after `since_date` (YYYY-MM-DD).
 pub fn article_ids_since(conn: &Connection, since_date: &str) -> AppResult<Vec<i64>> {
     let mut st = conn.prepare("SELECT article_id FROM daily_picks WHERE date >= ?1")?;

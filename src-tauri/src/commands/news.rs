@@ -255,6 +255,12 @@ pub async fn get_today_lesson(state: State<'_, AppState>) -> CmdResult<Option<Da
     state.pick.today_lesson().await
 }
 
+/// "Show another" on a Today card: `kind` is "story" or "lesson".
+#[tauri::command]
+pub async fn next_pick(state: State<'_, AppState>, kind: String) -> CmdResult<()> {
+    state.pick.next(&kind).await
+}
+
 #[tauri::command]
 pub async fn get_pick_preview(state: State<'_, AppState>) -> CmdResult<Option<ArticleListItem>> {
     state.pick.preview().await

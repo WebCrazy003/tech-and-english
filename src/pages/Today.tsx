@@ -21,7 +21,16 @@ function PickCard({
 }) {
   const refreshPick = useApp((s) => s.refreshPick);
   const navigate = useNavigate();
+  const [finding, setFinding] = useState(false);
   const after = () => void refreshPick();
+  const showAnother = () => {
+    setFinding(true);
+    api
+      .nextPick(kind)
+      .then(() => refreshPick())
+      .catch(toastError)
+      .finally(() => setFinding(false));
+  };
   // The lesson "why" is "Tutorial · Data Engineering · from a learning source".
   const lessonTopic = kind === "lesson" ? why?.split(" · ")[1] : undefined;
   return (
@@ -62,6 +71,9 @@ function PickCard({
         </button>
         <button onClick={() => api.setSaved(article.id, !article.saved).then(after).catch(toastError)}>
           {article.saved ? "★ Saved" : "☆ Save"}
+        </button>
+        <button onClick={showAnother} disabled={finding} title={`Suggest a different ${kind}`}>
+          {finding ? "Finding…" : "Show another →"}
         </button>
         <button
           className="ghost"

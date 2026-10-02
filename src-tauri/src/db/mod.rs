@@ -14,6 +14,9 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, include_str!("../../migrations/0003_learning.sql")),
     (4, include_str!("../../migrations/0004_vocab.sql")),
     (5, include_str!("../../migrations/0005_voice.sql")),
+    (6, include_str!("../../migrations/0006_hide_unreadable.sql")),
+    (7, include_str!("../../migrations/0007_feed_cleanup.sql")),
+    (8, include_str!("../../migrations/0008_pick_skips.sql")),
 ];
 
 /// Single SQLite connection shared by all services. rusqlite is synchronous, so
@@ -172,7 +175,17 @@ mod tests {
         let learning: i64 = c
             .query_row("SELECT count(*) FROM feeds WHERE learning = 1", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(learning, 8 + 1, "8 new sources + DuckDB flagged");
+        // 0003: 8 new + DuckDB flagged; 0007: Confessions of a Data Guy removed, 6 learning sources added.
+        assert_eq!(learning, 8 + 1 - 1 + 6);
+        let blocked: i64 = c
+            .query_row(
+                "SELECT count(*) FROM feeds WHERE url IN ('https://towardsdatascience.com/feed',
+                   'https://www.confessionsofadataguy.com/feed/')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(blocked, 0, "0007 removes feeds the app can't read");
     }
 
     #[test]

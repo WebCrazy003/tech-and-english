@@ -19,6 +19,22 @@ void onEvent<{ articleId: number }>(EVENTS.needsBody, ({ articleId }) => {
   void ensureBody(articleId).catch(() => {});
 });
 
+// After a news fetch: check new articles one by one; the backend hides the ones that can't be read.
+const checkQueue = new Set<number>(); // queued and in-flight ids
+let checking = false;
+void onEvent<{ articleIds: number[] }>(EVENTS.checkBodies, ({ articleIds }) => {
+  articleIds.forEach((id) => checkQueue.add(id));
+  if (checking) return;
+  checking = true;
+  void (async () => {
+    for (const id of checkQueue) {
+      await ensureBody(id).catch(() => {});
+      checkQueue.delete(id);
+    }
+    checking = false;
+  })();
+});
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <Widget />

@@ -60,6 +60,10 @@ pub async fn fetch_html(http: &dyn HttpClient, url: &str) -> AppResult<FetchedHt
     if !(200..300).contains(&resp.status) {
         return Err(AppError::Network(format!("HTTP {}", resp.status)));
     }
+    // Bot checks (e.g. AWS WAF on Towards Data Science) answer 202 with an empty page.
+    if resp.status == 202 || resp.header("x-amzn-waf-action").is_some() || resp.body.trim_ascii().is_empty() {
+        return Err(AppError::Network("The site blocked the app (bot check)".into()));
+    }
     let ct = resp.header("content-type").unwrap_or("").to_ascii_lowercase();
     if !ct.is_empty() && !ct.contains("html") {
         return Err(AppError::Invalid("not an HTML page".into()));
@@ -159,6 +163,10 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_raw(vec![b'a'; MAX_HTML_BYTES + 10], "text/html"))
             .mount(&s)
             .await;
+        Mock::given(path("/challenge"))
+            .respond_with(ResponseTemplate::new(202).insert_header("x-amzn-waf-action", "challenge"))
+            .mount(&s)
+            .await;
         Mock::given(path("/moved"))
             .respond_with(ResponseTemplate::new(301).insert_header("location", "/ok"))
             .mount(&s)
@@ -174,6 +182,13 @@ mod tests {
                 .contains("not an HTML")
         );
         assert!(fetch_html(&http, &format!("{}/big", s.uri())).await.is_err());
+        assert!(
+            fetch_html(&http, &format!("{}/challenge", s.uri()))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("bot check")
+        );
         let moved = fetch_html(&http, &format!("{}/moved", s.uri())).await.unwrap();
         assert!(moved.final_url.ends_with("/ok"));
     }
